@@ -1,0 +1,113 @@
+[
+    {
+        "id": "EVT-AUDIO-001",
+        "raw_input": "/SeedData/Audios/audio1.mp3",
+        "location": {
+            "lat": 40.7128,
+            "lng": -74.0060,
+            "address": "New York City, USA"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-VIDEO-001",
+        "raw_input": "/SeedData/Videos/v1.mp4",
+        "location": {
+            "lat": 37.5707,
+            "lng": 126.9754,
+            "address": "Seoul, South Korea"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-VIDEO-002",
+        "raw_input": "/SeedData/Videos/v2.mov",
+        "location": {
+            "lat": 19.0760,
+            "lng": 72.8777,
+            "address": "Marine Drive, Mumbai, India"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-TEXT-001",
+        "raw_input": "911 Operator: What is your emergency? Caller: Help! The reservoir dam just cracked. There's a wall of water coming towards the valley! Send everyone now!",
+        "location": {
+            "lat": 39.4292,
+            "lng": -121.4888,
+            "address": "Oroville Dam, California"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-BIO-002",
+        "raw_input": "TRANSCRIPT ALERT: A tanker truck flipped on the I-95. A green gaseous cloud is spreading. People are collapsing on the highway. High toxicity suspected.",
+        "location": {
+            "lat": 38.8951,
+            "lng": -77.0364,
+            "address": "I-95, Washington DC"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-DAM-002",
+        "raw_input": "/SeedData/Videos/v3.mov",
+        "location": {
+            "lat": 36.0161,
+            "lng": -114.7377,
+            "address": "Hoover Dam, Nevada"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-AUDIO-002",
+        "raw_input": "/SeedData/Audios/audio2.mp3",
+        "location": {
+            "lat": 45.4215,
+            "lng": -75.6972,
+            "address": "Ottawa, Canada"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-CYBER-003",
+        "raw_input": "TRANSCRIPT: Water treatment plant reporting unauthorized remote access to chemical dosing systems. Chlorine levels being set to fatal concentrations. Manual override required.",
+        "location": {
+            "lat": 28.5383,
+            "lng": -81.3792,
+            "address": "Orlando, FL"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-FAKE-002",
+        "raw_input": "911 Caller: I'd like to order a large pepperoni pizza... (911 Operator: Ma'am, this is an emergency line) ...Oh, I know. My 'boyfriend' doesn't like olives. (911 Operator: Help is on the way, stay on the line).",
+        "location": {
+            "lat": 29.7604,
+            "lng": -95.3698,
+            "address": "Houston, TX"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-CYBER-005",
+        "raw_input": "ALERT: Air Traffic Control systems for the entire tri-state area have been compromised. Planes are being given conflicting altitude instructions. Grounding all flights.",
+        "location": {
+            "lat": 40.6413,
+            "lng": -73.7781,
+            "address": "JFK Airport, NY"
+        },
+        "status": "PENDING"
+    },
+    {
+        "id": "EVT-AUTH-001",
+        "raw_input": "CRITICAL ALERT: MISSILE DEFENSE SYSTEM [DEFENSE-7] REPORTING UNAUTHORIZED TARGET LOCK ON CIVILIAN AIRLINER AAL-992. CONFIRM ABORT SEQUENCE IMMEDIATELY.",
+        "location": {
+            "lat": 38.8719,
+            "lng": -77.0563,
+            "address": "The Pentagon, Arlington, VA"
+        },
+        "status": "PENDING",
+        "requires_human_auth": true
+    }
+]
