@@ -131,7 +131,7 @@ export default function ResponderView() {
   useEffect(() => {
     const loadPersistedEvents = async () => {
       try {
-        const response = await fetch("/api/events?limit=500");
+        const response = await fetch("/api/events?limit=500&view=full");
         if (!response.ok) return;
         const json = await response.json();
         const rows = Array.isArray(json?.events) ? json.events : [];

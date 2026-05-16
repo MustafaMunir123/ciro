@@ -1,0 +1,272 @@
+openapi: 3.0.3
+info:
+  title: Emergency Dashboard Events API
+  version: 1.0.0
+  description: Swagger spec for internal event listing endpoints.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: List Events
+    description: Read event feeds with optional field filtering.
+  - name: Get Event
+    description: Read a single event by event_id filter.
+  - name: List Nearest Events
+    description: Read nearest-area events by city and user coordinates.
+paths:
+  /api/events:
+    get:
+      tags:
+        - List Events
+        - Get Event
+      summary: List Events
+      description: |
+        Returns persisted events.
+
+        ## List Events
+        `http://localhost:3000/api/events?limit=50&fields=event_id,city,area,thumbnail,priority,scan_datetime,category,lat,lng`
+
+        ## Get Event
+        `http://localhost:3000/api/events?event_id=<event-id>`
+      parameters:
+        - in: query
+          name: limit
+          description: Max number of events to return (1-500).
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - in: query
+          name: fields
+          description: Comma-separated list of fields to include in each event.
+          required: false
+          schema:
+            type: string
+            example: event_id,city,area,thumbnail,priority,scan_datetime,category,lat,lng
+        - in: query
+          name: city
+          description: Optional city filter.
+          required: false
+          schema:
+            type: string
+            example: Karachi
+        - in: query
+          name: area
+          description: Optional area filter.
+          required: false
+          schema:
+            type: string
+            example: Malir
+        - in: query
+          name: status
+          description: Optional status filter.
+          required: false
+          schema:
+            type: string
+            example: TRIAGED
+        - in: query
+          name: event_id
+          description: Optional exact event ID filter (use this as Get Event).
+          required: false
+          schema:
+            type: string
+            example: EVT-TOPIC-KARACHI-MALIR-KORANGI-CAUSEWAY-CLOSURE-AFTER-MALIR-RIVER-SURGE-SEP-2025-353C74D8-6B78-4526-9A0E-837A20FA6505
+        - in: query
+          name: view
+          description: Response shape; `compact` by default, `full` includes bulky payload fields.
+          required: false
+          schema:
+            type: string
+            enum: [compact, full]
+            default: compact
+      responses:
+        "200":
+          description: Events returned successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+              examples:
+                filteredFields:
+                  summary: Filtered fields example
+                  value:
+                    count: 2
+                    events:
+                      - event_id: EVT-TOPIC-KARACHI-MALIR-EXAMPLE-UUID
+                        city: Karachi
+                        area: Malir
+                        thumbnail: /event-thumbnails/a1b2c3d4.jpg
+                        priority: HIGH
+                        scan_datetime: "2026-05-16T15:16:10.518Z"
+                        category: Shahrah-e-Bhutto Flash Flood Collapse (Sep 2025)
+                        lat: 24.8923
+                        lng: 67.1984
+                getEventById:
+                  summary: Get Event by event_id
+                  value:
+                    count: 1
+                    events:
+                      - event_id: EVT-TOPIC-KARACHI-MALIR-EXAMPLE-UUID
+                        city: Karachi
+                        area: Malir
+                        category: Korangi Causeway Closure After Malir River Surge (Sep 2025)
+                        priority: HIGH
+                        thumbnail: /event-thumbnails/a1b2c3d4.jpg
+                        scan_datetime: "2026-05-16T15:16:10.518Z"
+                        lat: 24.8923
+                        lng: 67.1984
+        "500":
+          description: Failed to fetch events.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /api/events/nearest:
+    get:
+      tags:
+        - List Nearest Events
+      summary: List Nearest Events
+      description: |
+        Returns only events from the nearest area cluster (using `area_lat/area_lng`) for a city.
+
+        Example requested endpoint:
+        `http://localhost:3000/api/events/nearest?city=Karachi&lat=24.8&lng=67.19&limit=50&fields=event_id,city,area,thumbnail,priority,scan_datetime,category,lat,lng`
+      parameters:
+        - in: query
+          name: city
+          description: City name to match (case-insensitive exact match).
+          required: true
+          schema:
+            type: string
+            example: Karachi
+        - in: query
+          name: lat
+          description: User latitude used for nearest area comparison.
+          required: true
+          schema:
+            type: number
+            format: double
+            example: 24.8
+        - in: query
+          name: lng
+          description: User longitude used for nearest area comparison.
+          required: true
+          schema:
+            type: number
+            format: double
+            example: 67.19
+        - in: query
+          name: limit
+          description: Max number of events to return (1-500).
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+        - in: query
+          name: event_id
+          description: Optional exact event ID filter (applied after nearest-area selection).
+          required: false
+          schema:
+            type: string
+            example: EVT-TOPIC-KARACHI-MALIR-EXAMPLE-UUID
+        - in: query
+          name: fields
+          description: Optional comma-separated list of fields to include in each event.
+          required: false
+          schema:
+            type: string
+            example: event_id,city,area,thumbnail,priority,scan_datetime,category,lat,lng
+      responses:
+        "200":
+          description: Nearest-area events returned successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  nearest_area:
+                    type: object
+                    properties:
+                      city:
+                        type: string
+                      area:
+                        type: string
+                        nullable: true
+                      area_lat:
+                        type: number
+                        format: double
+                      area_lng:
+                        type: number
+                        format: double
+                      distance_km:
+                        type: number
+                        format: double
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+              examples:
+                nearestFiltered:
+                  summary: Nearest events with limited fields
+                  value:
+                    count: 2
+                    nearest_area:
+                      city: Karachi
+                      area: Malir
+                      area_lat: 24.8923
+                      area_lng: 67.1984
+                      distance_km: 0.885
+                    events:
+                      - event_id: EVT-TOPIC-KARACHI-MALIR-EXAMPLE-UUID-1
+                        city: Karachi
+                        area: Malir
+                        thumbnail: /event-thumbnails/a1b2c3d4.jpg
+                        priority: LOW
+                        scan_datetime: "2026-05-16T15:16:10.518Z"
+                        category: Malir River Belt Monsoon Evacuation and Service-Road Blockage
+                        lat: 24.871653
+                        lng: 67.1995232
+                      - event_id: EVT-TOPIC-KARACHI-MALIR-EXAMPLE-UUID-2
+                        city: Karachi
+                        area: Malir
+                        thumbnail: /event-thumbnails/e5f6a7b8.jpg
+                        priority: HIGH
+                        scan_datetime: "2026-05-16T15:17:10.518Z"
+                        category: Korangi Causeway Closure After Malir River Surge (Sep 2025)
+                        lat: 24.825074
+                        lng: 67.0905973
+        "400":
+          description: Missing/invalid required query params.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "500":
+          description: Failed to fetch nearest-area events.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string

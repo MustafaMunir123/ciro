@@ -45,6 +45,14 @@ function buildId(value: string): string {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function buildUuidSuffix(): string {
+    const fallback = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    if (typeof globalThis.crypto?.randomUUID === "function") {
+        return globalThis.crypto.randomUUID().toUpperCase();
+    }
+    return fallback.toUpperCase();
+}
+
 function normalizeTopicDescriptor(topic: string | { topic: string; place?: string }): TopicDescriptor {
     if (typeof topic === "string") {
         return { topic };
@@ -160,7 +168,7 @@ export function useDisasterSimulation() {
                 const topicIntelPayload: Array<{
                     topic: string;
                     place?: string;
-                    records: Array<{ source: string; headline: string; url?: string; published_at?: string; tags?: string[] }>;
+                    records: Array<{ source: string; headline: string; url?: string; published_at?: string; tags?: string[]; thumbnail?: string }>;
                     fallback?: string;
                 }> = [];
                 for (let topicIndex = 0; topicIndex < topicDescriptors.length; topicIndex += 1) {
@@ -204,6 +212,7 @@ export function useDisasterSimulation() {
                                 url: record?.url || undefined,
                                 published_at: record?.published_at || undefined,
                                 tags: Array.isArray(record?.tags) ? record.tags : undefined,
+                                thumbnail: record?.thumbnail || undefined,
                             })),
                         });
                     } catch (error: any) {
@@ -362,6 +371,13 @@ export function useDisasterSimulation() {
                     }
 
                     const topicRecords = Array.isArray(topicEntry.records) ? topicEntry.records : [];
+                    const topNewsWithThumbnail = topicRecords.find((record) =>
+                        record.source === "NEWS_API" && typeof record.thumbnail === "string" && record.thumbnail.trim().length > 0
+                    );
+                    const topAnyWithThumbnail = topicRecords.find((record) =>
+                        typeof record.thumbnail === "string" && record.thumbnail.trim().length > 0
+                    );
+                    const eventThumbnail = (topNewsWithThumbnail?.thumbnail || topAnyWithThumbnail?.thumbnail || "").trim() || undefined;
                     topicRecords.forEach((record) => {
                         if (record.source) sourceTrailSet.add(String(record.source));
                         if (Array.isArray(record.tags)) {
@@ -386,7 +402,7 @@ export function useDisasterSimulation() {
                         : undefined;
 
                     events.push({
-                        id: `EVT-TOPIC-${buildId(cityEntry.city)}-${buildId(areaEntry.name)}-${buildId(topicName)}`,
+                        id: `EVT-TOPIC-${buildId(cityEntry.city)}-${buildId(areaEntry.name)}-${buildId(topicName)}-${buildUuidSuffix()}`,
                         type: "TEXT",
                         category: topicName,
                         place: resolvedPlace,
@@ -398,6 +414,7 @@ export function useDisasterSimulation() {
                             source: "GOOGLE_PLACE_TEXT_SEARCH",
                         },
                         ai_summary: `Topic signal generated for ${topicName} in ${areaEntry.name}, ${cityEntry.city}.`,
+                        thumbnail: eventThumbnail,
                         scan_datetime: nowIso,
                         news_date: newsDate,
                         raw_input: JSON.stringify(topicSignal, null, 2),
@@ -640,7 +657,11 @@ export function useDisasterSimulation() {
                                 try {
                                     const event = JSON.parse(line);
                                     if (event.type === "result") {
-                                        result = { ...result, ...event.data };
+                                        result = {
+                                            ...result,
+                                            ...event.data,
+                                            category: incident.category || result.category,
+                                        };
                                     } else if (event.type === "audit_log") {
                                         useSimulationStore.getState().addAgentAuditLog(event.entry);
                                     }
@@ -735,7 +756,11 @@ export function useDisasterSimulation() {
                                             break;
                                         case "result":
                                             // Merge the result data
-                                            latestResult = { ...latestResult, ...event.data };
+                                            latestResult = {
+                                                ...latestResult,
+                                                ...event.data,
+                                                category: heroIncident.category || latestResult.category,
+                                            };
                                             break;
                                         case "audit_log":
                                             useSimulationStore.getState().addAgentAuditLog(event.entry);
@@ -891,6 +916,7 @@ export function useDisasterSimulation() {
                                     ...preservedAnalysis,
                                     ...freshIncident,
                                     ...overrideResult,
+                                    category: heroIncident.category || freshIncident.category,
                                     reasoning_trace: `${cleanOriginalTrace}\n\n[COMMAND OVERRIDE]: ${overrideResult.command_intent || "Executed"}\n${overrideResult.reasoning_trace || ""}`.trim(),
                                     assigned_assets: mergedAssets,
                                     status: overrideResult.status || "TRIAGED",
