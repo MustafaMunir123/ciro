@@ -3,7 +3,7 @@
 import { ai } from "@/lib/gemini-client";
 import { MODELS } from "@/lib/constants";
 import { type Incident } from "@/lib/types";
-import { ThinkingLevel, Type } from "@google/genai";
+import { Type } from "@google/genai";
 
 
 import { generateContentStreamWithRetry, extractAndParseJSON } from "@/lib/gemini-utils";
@@ -139,10 +139,6 @@ export async function manageLogistics(incident: Incident, onThought?: (thought: 
             config: {
                 systemInstruction: systemInstruction,
                 tools: [{ googleSearch: {} }], // Grounding enabled
-                thinkingConfig: {
-                    includeThoughts: true,
-                    thinkingLevel: ThinkingLevel.HIGH
-                }
             },
         });
 

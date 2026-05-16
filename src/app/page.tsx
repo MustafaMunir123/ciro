@@ -68,7 +68,8 @@ export default function ResponderView() {
     setIsReportOpen,
     isGeneratingReport,
     setIsGeneratingReport,
-    setIsMissionComplete
+    setIsMissionComplete,
+    hydrateIncidents
   } = useSimulationStore();
 
   const handleGenerateReport = async () => {
@@ -106,6 +107,11 @@ export default function ResponderView() {
     };
 
     const warmUpGemini = async () => {
+      const warmupEnabled = process.env.NEXT_PUBLIC_GEMINI_WARMUP_ENABLED === "true";
+      if (!warmupEnabled) {
+        console.log("[SYSTEM] Gemini warmup skipped (NEXT_PUBLIC_GEMINI_WARMUP_ENABLED=false).");
+        return;
+      }
       console.log("[SYSTEM] Warming up AI Core...");
       try {
         // We call our new GET handler to initialize the AI client and warm up model cache
@@ -120,6 +126,50 @@ export default function ResponderView() {
     checkMic();
     warmUpGemini();
   }, [setIsMicAuthorized, showNotification]);
+
+  // Load persisted events from internal API (Supabase-backed) on startup.
+  useEffect(() => {
+    const loadPersistedEvents = async () => {
+      try {
+        const response = await fetch("/api/events?limit=500");
+        if (!response.ok) return;
+        const json = await response.json();
+        const rows = Array.isArray(json?.events) ? json.events : [];
+        const mapped = rows
+          .map((row: any) => {
+            const payload = row?.payload && typeof row.payload === "object" ? row.payload : {};
+            const id = row?.event_id || payload?.id;
+            if (!id) return null;
+            return {
+              ...payload,
+              id,
+              raw_input: payload?.raw_input ?? row?.raw_input ?? "",
+              timestamp: payload?.timestamp ?? row?.scan_datetime ?? row?.updated_at ?? new Date().toISOString(),
+              status: payload?.status ?? row?.status ?? "PENDING",
+              location: {
+                lat: payload?.location?.lat ?? row?.lat ?? 0,
+                lng: payload?.location?.lng ?? row?.lng ?? 0,
+                address: payload?.location?.address ?? row?.address ?? undefined,
+              },
+              area_location: payload?.area_location ?? (
+                typeof row?.area_lat === "number" && typeof row?.area_lng === "number"
+                  ? { lat: row.area_lat, lng: row.area_lng, address: undefined }
+                  : undefined
+              ),
+            };
+          })
+          .filter(Boolean);
+
+        if (mapped.length > 0) {
+          hydrateIncidents(mapped as any);
+        }
+      } catch {
+        // Silent fail: local simulation remains usable even if loading persisted events fails.
+      }
+    };
+
+    loadPersistedEvents();
+  }, [hydrateIncidents]);
 
   // Calculate stats
   const criticalCount = incidents.filter(i => i.priority === "CRITICAL").length;
@@ -213,22 +263,28 @@ export default function ResponderView() {
                 ) : (
                   <>
                     <span className="w-0 h-0 border-t-[4px] border-t-transparent border-l-[6px] border-l-blue-400 border-b-[4px] border-b-transparent ml-1" />
-                    INITIALIZE
+                    SCAN
                   </>
                 )}
               </span>
             </button>
 
             <button
-              onClick={() => {
-                localStorage.removeItem("simulation-store");
-                window.location.reload();
+              onClick={async () => {
+                try {
+                  await fetch("/api/events?all=true", { method: "DELETE" });
+                } catch {
+                  // Keep wipe responsive even if remote delete fails.
+                } finally {
+                  localStorage.removeItem("simulation-store");
+                  window.location.reload();
+                }
               }}
-              className="group relative px-3 py-2 rounded-lg font-mono text-xs font-bold tracking-widest transition-all duration-500 overflow-hidden border border-red-900/30 hover:border-red-500/50 text-red-500/50 hover:text-red-400 hover:bg-red-500/5 flex items-center gap-2"
+              className="group relative px-3 py-2 rounded-lg font-mono text-xs font-bold tracking-widest transition-all duration-500 overflow-hidden border border-zinc-700/50 hover:border-zinc-300/70 text-zinc-300/80 hover:text-white hover:bg-white/5 flex items-center gap-2"
               title="WIPE DATABASE"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline text-[9px]">WIPE</span>
+              <span className="hidden lg:inline text-[9px]">PURGE</span>
             </button>
 
           </div>

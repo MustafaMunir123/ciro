@@ -3,7 +3,7 @@
 import { ai } from "@/lib/gemini-client";
 import { MODELS } from "@/lib/constants";
 import { type Incident } from "@/lib/types";
-import { ThinkingLevel, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import fs from "fs";
 import path from "path";
 import { generateContentStreamWithRetry, extractAndParseJSON } from "@/lib/gemini-utils";
@@ -164,10 +164,6 @@ export async function analyzeSurveillance(incident: Incident, onThought?: (thoug
                         required: ["flood_level", "structural_damage", "reasoning_trace", "display_reasoning", "category", "requires_logistics", "is_authentic", "priority"],
                     },
                     tools: [{ googleSearch: {} }],
-                    thinkingConfig: {
-                        includeThoughts: true,
-                        thinkingLevel: ThinkingLevel.HIGH
-                    }
                 },
             });
 

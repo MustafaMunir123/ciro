@@ -3,7 +3,7 @@
 import { ai, generateThoughtSignature } from "@/lib/gemini-client";
 import { MODELS } from "@/lib/constants";
 import { type Incident } from "@/lib/types";
-import { ThinkingLevel, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import fs from "fs";
 import path from "path";
 
@@ -195,10 +195,6 @@ export async function triageIncident(incident: Incident, onThought?: (thought: s
             config: {
                 systemInstruction: systemInstruction,
                 tools: [{ googleSearch: {} }], // Enable Grounding for location fallback
-                thinkingConfig: {
-                    includeThoughts: true,
-                    thinkingLevel: ThinkingLevel.HIGH
-                },
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
