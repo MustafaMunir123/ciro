@@ -1,3 +1,5 @@
+import { persistRemoteImageToLocalPath } from "@/lib/local-image-store";
+
 export type ExternalSource = "NEWS_API" | "SOCIAL_API";
 
 export interface DisasterIntelQuery {
@@ -17,6 +19,7 @@ export interface DisasterIntelRecord {
     url?: string;
     author?: string;
     published_at?: string;
+    thumbnail?: string;
     city: string;
     area: string;
     topic?: string;
@@ -142,6 +145,7 @@ function mapRecord(
     const url = readString(item, ["url", "link", "post_url", "permalink"], "");
     const author = readString(item, ["author", "source", "username", "user"], "");
     const publishedAt = readString(item, ["published_at", "publishedAt", "created_at", "date", "timestamp"], "");
+    const thumbnail = readString(item, ["thumbnail", "thumbnail_url", "image", "image_url", "photo"], "");
     const tags = readArray(item, ["tags", "hashtags", "keywords"]);
 
     return {
@@ -152,6 +156,7 @@ function mapRecord(
         url: url || undefined,
         author: author || undefined,
         published_at: publishedAt || undefined,
+        thumbnail: thumbnail || undefined,
         city: context.city,
         area: context.area,
         topic: context.topic,
@@ -239,7 +244,16 @@ export async function fetchDisasterIntel(input: DisasterIntelQuery): Promise<Dis
         providerErrors.push(`social_api: ${error?.message || "unknown error"}`);
     }
 
-    const merged = [...news, ...social].sort((a, b) => {
+    const mergedWithLocalThumbs: DisasterIntelRecord[] = [];
+    for (const record of [...news, ...social]) {
+        const localThumbnailPath = await persistRemoteImageToLocalPath(record.thumbnail);
+        mergedWithLocalThumbs.push({
+            ...record,
+            thumbnail: localThumbnailPath,
+        });
+    }
+
+    const merged = mergedWithLocalThumbs.sort((a, b) => {
         const aTs = a.published_at ? Date.parse(a.published_at) : 0;
         const bTs = b.published_at ? Date.parse(b.published_at) : 0;
         return bTs - aTs;

@@ -15,6 +15,7 @@ create table if not exists public.scan_events (
   source_trail text[],
   road_coords jsonb,
   ai_summary text,
+  thumbnail text,
   scan_datetime timestamptz,
   news_date timestamptz,
   raw_input text,
@@ -32,7 +33,31 @@ alter table public.scan_events add column if not exists event_tags text[];
 alter table public.scan_events add column if not exists source_trail text[];
 alter table public.scan_events add column if not exists road_coords jsonb;
 alter table public.scan_events add column if not exists ai_summary text;
+alter table public.scan_events add column if not exists thumbnail text;
 alter table public.scan_events add column if not exists scan_datetime timestamptz;
 alter table public.scan_events add column if not exists news_date timestamptz;
 alter table public.scan_events add column if not exists area_lat double precision;
 alter table public.scan_events add column if not exists area_lng double precision;
+
+-- Patch migration: append UUID suffix to legacy event IDs that don't already have one.
+create extension if not exists pgcrypto;
+
+with legacy_ids as (
+  select
+    event_id as old_event_id,
+    event_id || '-' || upper(gen_random_uuid()::text) as new_event_id
+  from public.scan_events
+  where event_id like 'EVT-TOPIC-%'
+    and event_id !~* '-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+)
+update public.scan_events as se
+set
+  event_id = legacy_ids.new_event_id,
+  payload = case
+    when jsonb_typeof(se.payload) = 'object'
+      then jsonb_set(se.payload, '{id}', to_jsonb(legacy_ids.new_event_id), true)
+    else se.payload
+  end,
+  updated_at = now()
+from legacy_ids
+where se.event_id = legacy_ids.old_event_id;

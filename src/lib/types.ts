@@ -82,6 +82,7 @@ export interface Incident {
         source?: string;
     };
     ai_summary?: string;
+    thumbnail?: string;
     news_date?: string;
     source_trail?: string[];
     scan_datetime?: string;

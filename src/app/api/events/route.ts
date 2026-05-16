@@ -97,6 +97,37 @@ function buildAiSummary(body: any): string | null {
     return candidate.slice(0, 1000);
 }
 
+function extractThumbnail(body: any): string | null {
+    const normalizeThumbnail = (value: unknown): string | null => {
+        if (typeof value !== "string") return null;
+        const clean = value.trim();
+        if (!clean) return null;
+        return clean.startsWith("/event-thumbnails/") ? clean : null;
+    };
+
+    const direct = normalizeThumbnail(body?.thumbnail);
+    if (direct) return direct;
+
+    const rawInput = body?.raw_input;
+    if (typeof rawInput !== "string" || !rawInput.startsWith("{")) return null;
+    try {
+        const parsed = JSON.parse(rawInput);
+        const topics = Array.isArray(parsed?.intel_by_topic) ? parsed.intel_by_topic : [];
+        for (const topicEntry of topics) {
+            const records = Array.isArray(topicEntry?.records) ? topicEntry.records : [];
+            const preferred = records.find((record: any) => record?.source === "NEWS_API" && normalizeThumbnail(record?.thumbnail));
+            const preferredThumb = normalizeThumbnail(preferred?.thumbnail);
+            if (preferredThumb) return preferredThumb;
+            const fallback = records.find((record: any) => normalizeThumbnail(record?.thumbnail));
+            const fallbackThumb = normalizeThumbnail(fallback?.thumbnail);
+            if (fallbackThumb) return fallbackThumb;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+}
+
 function buildSourceTrail(body: any): string[] | null {
     const trail = new Set<string>();
     const pushSource = (value: unknown) => {
@@ -254,7 +285,7 @@ async function upsertViaSupabaseRest(payload: Record<string, unknown>) {
     return { data: json?.[0] || null, error: null };
 }
 
-async function fetchEventsViaSupabaseRest(params: { limit: number; city: string | null; area: string | null; status: string | null }) {
+async function fetchEventsViaSupabaseRest(params: { limit: number; city: string | null; area: string | null; status: string | null; eventId: string | null }) {
     const config = getSupabaseRestConfig();
     if (!config) {
         return { data: null, error: "Supabase REST config missing" };
@@ -267,6 +298,7 @@ async function fetchEventsViaSupabaseRest(params: { limit: number; city: string 
     if (params.city) query.set("city", `eq.${params.city}`);
     if (params.area) query.set("area", `eq.${params.area}`);
     if (params.status) query.set("status", `eq.${params.status}`);
+    if (params.eventId) query.set("event_id", `eq.${params.eventId}`);
 
     const endpoint = `${config.url}/rest/v1/${TABLE_NAME}?${query.toString()}`;
     const init: RequestInit = {
@@ -345,6 +377,42 @@ async function deleteEventsViaSupabaseRest(params: { all: boolean; ids: string[]
     return { data: json || [], error: null };
 }
 
+function toCompactEvent(row: any) {
+    return {
+        event_id: row?.event_id ?? null,
+        type: row?.type ?? null,
+        category: row?.category ?? null,
+        priority: row?.priority ?? null,
+        status: row?.status ?? null,
+        city: row?.city ?? null,
+        area: row?.area ?? null,
+        area_lat: row?.area_lat ?? null,
+        area_lng: row?.area_lng ?? null,
+        lat: row?.lat ?? null,
+        lng: row?.lng ?? null,
+        address: row?.address ?? null,
+        event_tags: row?.event_tags ?? null,
+        source_trail: row?.source_trail ?? null,
+        road_coords: row?.road_coords ?? null,
+        ai_summary: row?.ai_summary ?? null,
+        thumbnail: row?.thumbnail ?? null,
+        scan_datetime: row?.scan_datetime ?? null,
+        news_date: row?.news_date ?? null,
+        updated_at: row?.updated_at ?? null,
+    };
+}
+
+function pickEventFields(row: any, fields: string[]) {
+    const selected: Record<string, unknown> = {};
+    for (const field of fields) {
+        if (!field) continue;
+        if (Object.prototype.hasOwnProperty.call(row, field)) {
+            selected[field] = row[field];
+        }
+    }
+    return selected;
+}
+
 export async function GET(req: NextRequest) {
     try {
         const supabase = getSupabaseServiceClient();
@@ -354,6 +422,13 @@ export async function GET(req: NextRequest) {
         const city = searchParams.get("city");
         const area = searchParams.get("area");
         const status = searchParams.get("status");
+        const eventId = searchParams.get("event_id");
+        const view = (searchParams.get("view") || "compact").toLowerCase();
+        const fullView = view === "full";
+        const fieldsParam = searchParams.get("fields");
+        const requestedFields = fieldsParam
+            ? fieldsParam.split(",").map((field) => field.trim()).filter(Boolean)
+            : [];
 
         let query = supabase
             .from(TABLE_NAME)
@@ -364,16 +439,22 @@ export async function GET(req: NextRequest) {
         if (city) query = query.eq("city", city);
         if (area) query = query.eq("area", area);
         if (status) query = query.eq("status", status);
+        if (eventId) query = query.eq("event_id", eventId);
 
         const { data, error } = await query;
         if (error) {
             if (shouldUseSupabaseTlsFallback(error)) {
                 logSupabaseTlsFallbackOnce("GET");
-                const fallback = await fetchEventsViaSupabaseRest({ limit, city, area, status });
+                const fallback = await fetchEventsViaSupabaseRest({ limit, city, area, status, eventId });
                 if (fallback.error) {
                     return NextResponse.json({ error: fallback.error }, { status: 500 });
                 }
-                return NextResponse.json({ count: fallback.data?.length || 0, events: fallback.data || [] });
+                const rows = fallback.data || [];
+                const eventsBase = fullView ? rows : rows.map(toCompactEvent);
+                const events = requestedFields.length > 0
+                    ? eventsBase.map((row: any) => pickEventFields(row, requestedFields))
+                    : eventsBase;
+                return NextResponse.json({ count: rows.length || 0, events });
             }
             console.error("[EVENTS][GET] Supabase query error:", error);
             return NextResponse.json(
@@ -382,7 +463,12 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        return NextResponse.json({ count: data?.length || 0, events: data || [] });
+        const rows = data || [];
+        const eventsBase = fullView ? rows : rows.map(toCompactEvent);
+        const events = requestedFields.length > 0
+            ? eventsBase.map((row: any) => pickEventFields(row, requestedFields))
+            : eventsBase;
+        return NextResponse.json({ count: rows.length || 0, events });
     } catch (error: any) {
         return NextResponse.json(
             { error: error?.message || "Failed to fetch events from Supabase" },
@@ -432,6 +518,7 @@ export async function POST(req: NextRequest) {
             source_trail: buildSourceTrail(body),
             road_coords: body?.road_coords || null,
             ai_summary: buildAiSummary(body),
+            thumbnail: extractThumbnail(body),
             scan_datetime: body?.timestamp || new Date().toISOString(),
             news_date: body?.news_date || extractNewsDate(body?.raw_input),
             raw_input: body?.raw_input || null,
