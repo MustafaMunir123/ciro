@@ -86,6 +86,7 @@ export interface Incident {
     news_date?: string;
     source_trail?: string[];
     scan_datetime?: string;
+    is_user_submitted?: boolean;
 }
 
 export interface AgentAuditLog {

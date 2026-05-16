@@ -24,6 +24,7 @@ function getExtFromContentType(contentType?: string | null): string {
     if (clean.includes("image/png")) return ".png";
     if (clean.includes("image/webp")) return ".webp";
     if (clean.includes("image/gif")) return ".gif";
+    if (clean.includes("image/heic") || clean.includes("image/heif")) return ".heic";
     if (clean.includes("image/jpeg") || clean.includes("image/jpg")) return ".jpg";
     return ".jpg";
 }
@@ -75,6 +76,35 @@ async function fetchImageWithInsecureTls(url: string): Promise<Response> {
         req.on("error", reject);
         req.end();
     });
+}
+
+export async function persistUploadBufferToLocalPath(
+    buffer: Buffer,
+    contentType: string,
+    preferredBaseName?: string,
+    extensionOverride?: string,
+): Promise<string | undefined> {
+    if (!buffer.length) return undefined;
+    const cleanType = String(contentType || "").toLowerCase();
+    if (!cleanType.startsWith("image/")) return undefined;
+
+    await ensureThumbnailDir();
+    const digest = createHash("sha256").update(buffer).digest("hex").slice(0, 32);
+    const baseName = sanitizeFileBaseName(preferredBaseName || "") || digest;
+    const extension = extensionOverride || getExtFromContentType(contentType);
+    const filename = `${baseName}${extension}`;
+    const absolutePath = path.join(THUMBNAIL_PUBLIC_DIR, filename);
+    const relativePath = `/${THUMBNAIL_DIR_NAME}/${filename}`;
+
+    try {
+        await access(absolutePath);
+        return relativePath;
+    } catch {
+        // write new file
+    }
+
+    await writeFile(absolutePath, buffer);
+    return relativePath;
 }
 
 export async function persistRemoteImageToLocalPath(imageUrl?: string, preferredBaseName?: string): Promise<string | undefined> {
