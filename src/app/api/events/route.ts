@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServiceClient } from "@/lib/supabase";
+import { persistRemoteImageToLocalPath } from "@/lib/local-image-store";
 
 export const runtime = "nodejs";
 
@@ -97,16 +98,28 @@ function buildAiSummary(body: any): string | null {
     return candidate.slice(0, 1000);
 }
 
-function extractThumbnail(body: any): string | null {
-    const normalizeThumbnail = (value: unknown): string | null => {
+async function resolveThumbnailPath(body: any, eventId: string): Promise<string | null> {
+    const normalizeLocalThumbnailPath = (value: unknown): string | null => {
         if (typeof value !== "string") return null;
         const clean = value.trim();
         if (!clean) return null;
         return clean.startsWith("/event-thumbnails/") ? clean : null;
     };
+    const normalizeRemoteThumbnailUrl = (value: unknown): string | null => {
+        if (typeof value !== "string") return null;
+        const clean = value.trim();
+        if (!clean) return null;
+        if (clean.startsWith("http://") || clean.startsWith("https://")) return clean;
+        return null;
+    };
 
-    const direct = normalizeThumbnail(body?.thumbnail);
-    if (direct) return direct;
+    const directLocal = normalizeLocalThumbnailPath(body?.thumbnail);
+    if (directLocal) return directLocal;
+    const directRemote = normalizeRemoteThumbnailUrl(body?.thumbnail);
+    if (directRemote) {
+        const persisted = await persistRemoteImageToLocalPath(directRemote, eventId);
+        return persisted || null;
+    }
 
     const rawInput = body?.raw_input;
     if (typeof rawInput !== "string" || !rawInput.startsWith("{")) return null;
@@ -115,12 +128,27 @@ function extractThumbnail(body: any): string | null {
         const topics = Array.isArray(parsed?.intel_by_topic) ? parsed.intel_by_topic : [];
         for (const topicEntry of topics) {
             const records = Array.isArray(topicEntry?.records) ? topicEntry.records : [];
-            const preferred = records.find((record: any) => record?.source === "NEWS_API" && normalizeThumbnail(record?.thumbnail));
-            const preferredThumb = normalizeThumbnail(preferred?.thumbnail);
-            if (preferredThumb) return preferredThumb;
-            const fallback = records.find((record: any) => normalizeThumbnail(record?.thumbnail));
-            const fallbackThumb = normalizeThumbnail(fallback?.thumbnail);
-            if (fallbackThumb) return fallbackThumb;
+            const preferredLocal = records.find((record: any) => record?.source === "NEWS_API" && normalizeLocalThumbnailPath(record?.thumbnail));
+            const preferredLocalThumb = normalizeLocalThumbnailPath(preferredLocal?.thumbnail);
+            if (preferredLocalThumb) return preferredLocalThumb;
+
+            const preferredRemote = records.find((record: any) => record?.source === "NEWS_API" && normalizeRemoteThumbnailUrl(record?.thumbnail));
+            const preferredRemoteThumb = normalizeRemoteThumbnailUrl(preferredRemote?.thumbnail);
+            if (preferredRemoteThumb) {
+                const persisted = await persistRemoteImageToLocalPath(preferredRemoteThumb, eventId);
+                if (persisted) return persisted;
+            }
+
+            const fallbackLocal = records.find((record: any) => normalizeLocalThumbnailPath(record?.thumbnail));
+            const fallbackLocalThumb = normalizeLocalThumbnailPath(fallbackLocal?.thumbnail);
+            if (fallbackLocalThumb) return fallbackLocalThumb;
+
+            const fallbackRemote = records.find((record: any) => normalizeRemoteThumbnailUrl(record?.thumbnail));
+            const fallbackRemoteThumb = normalizeRemoteThumbnailUrl(fallbackRemote?.thumbnail);
+            if (fallbackRemoteThumb) {
+                const persisted = await persistRemoteImageToLocalPath(fallbackRemoteThumb, eventId);
+                if (persisted) return persisted;
+            }
         }
     } catch {
         return null;
@@ -495,6 +523,7 @@ export async function POST(req: NextRequest) {
         if (!id || typeof id !== "string") {
             return NextResponse.json({ error: "Missing required field: id" }, { status: 400 });
         }
+        const thumbnailPath = await resolveThumbnailPath(body, id);
 
         const supabase = getSupabaseServiceClient();
         const location = body?.location || {};
@@ -518,7 +547,7 @@ export async function POST(req: NextRequest) {
             source_trail: buildSourceTrail(body),
             road_coords: body?.road_coords || null,
             ai_summary: buildAiSummary(body),
-            thumbnail: extractThumbnail(body),
+            thumbnail: thumbnailPath,
             scan_datetime: body?.timestamp || new Date().toISOString(),
             news_date: body?.news_date || extractNewsDate(body?.raw_input),
             raw_input: body?.raw_input || null,

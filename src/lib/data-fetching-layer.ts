@@ -1,5 +1,3 @@
-import { persistRemoteImageToLocalPath } from "@/lib/local-image-store";
-
 export type ExternalSource = "NEWS_API" | "SOCIAL_API";
 
 export interface DisasterIntelQuery {
@@ -244,16 +242,7 @@ export async function fetchDisasterIntel(input: DisasterIntelQuery): Promise<Dis
         providerErrors.push(`social_api: ${error?.message || "unknown error"}`);
     }
 
-    const mergedWithLocalThumbs: DisasterIntelRecord[] = [];
-    for (const record of [...news, ...social]) {
-        const localThumbnailPath = await persistRemoteImageToLocalPath(record.thumbnail);
-        mergedWithLocalThumbs.push({
-            ...record,
-            thumbnail: localThumbnailPath,
-        });
-    }
-
-    const merged = mergedWithLocalThumbs.sort((a, b) => {
+    const merged = [...news, ...social].sort((a, b) => {
         const aTs = a.published_at ? Date.parse(a.published_at) : 0;
         const bTs = b.published_at ? Date.parse(b.published_at) : 0;
         return bTs - aTs;
