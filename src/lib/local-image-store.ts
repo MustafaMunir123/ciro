@@ -41,10 +41,15 @@ function getExtFromUrl(url: string): string | null {
     return null;
 }
 
-function buildLocalImagePath(sourceUrl: string, contentType?: string | null): { absolutePath: string; relativePath: string } {
+function sanitizeFileBaseName(value: string): string {
+    return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function buildLocalImagePath(sourceUrl: string, contentType?: string | null, preferredBaseName?: string): { absolutePath: string; relativePath: string } {
     const digest = createHash("sha256").update(sourceUrl).digest("hex").slice(0, 32);
+    const baseName = sanitizeFileBaseName(preferredBaseName || "") || digest;
     const extension = getExtFromUrl(sourceUrl) || getExtFromContentType(contentType);
-    const filename = `${digest}${extension}`;
+    const filename = `${baseName}${extension}`;
     return {
         absolutePath: path.join(THUMBNAIL_PUBLIC_DIR, filename),
         relativePath: `/${THUMBNAIL_DIR_NAME}/${filename}`,
@@ -72,7 +77,7 @@ async function fetchImageWithInsecureTls(url: string): Promise<Response> {
     });
 }
 
-export async function persistRemoteImageToLocalPath(imageUrl?: string): Promise<string | undefined> {
+export async function persistRemoteImageToLocalPath(imageUrl?: string, preferredBaseName?: string): Promise<string | undefined> {
     const cleanUrl = typeof imageUrl === "string" ? imageUrl.trim() : "";
     if (!cleanUrl) return undefined;
     if (cleanUrl.startsWith(`/${THUMBNAIL_DIR_NAME}/`)) return cleanUrl;
@@ -97,7 +102,7 @@ export async function persistRemoteImageToLocalPath(imageUrl?: string): Promise<
         return undefined;
     }
 
-    const { absolutePath, relativePath } = buildLocalImagePath(cleanUrl, contentType);
+    const { absolutePath, relativePath } = buildLocalImagePath(cleanUrl, contentType, preferredBaseName);
 
     try {
         await access(absolutePath);
