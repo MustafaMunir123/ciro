@@ -1,0 +1,127 @@
+[
+  {
+    "city": "Karachi",
+    "areas": [
+      {
+        "name": "Malir",
+        "lat": 24.8923,
+        "lng": 67.1984,
+        "topics": [
+          "Shahrah-e-Bhutto Flash Flood Collapse (Sep 2025)",
+          "Korangi Causeway Closure After Malir River Surge (Sep 2025)",
+          "Malir River Belt Monsoon Evacuation and Service-Road Blockage",
+          "M-9 Link Road Rainwater Logging Near Malir Halt"
+        ]
+      },
+      {
+        "name": "Korangi",
+        "lat": 24.8333,
+        "lng": 67.1500,
+        "topics": [
+          "Korangi Industrial Area Factory Fire with Access Road Sealing",
+          "Korangi Creek Monsoon Backflow Flooding on Main Arteries",
+          "Landhi-Korangi Road Protest Blockade During Utility Outage",
+          "Hazmat Spill Response Near Korangi Causeway Diversion Zone"
+        ]
+      },
+      {
+        "name": "Saddar",
+        "lat": 24.8565,
+        "lng": 67.0305,
+        "topics": [
+          "MWM Numaish Sit-in Blocking M.A. Jinnah Road (Dec 2024)",
+          "8th-10th Muharram Procession Closures from Nishtar Park to Kharadar",
+          "Saddar Building Collapse Rescue with Empress Market Diversions",
+          "Pre-monsoon Electric Infrastructure Fire Near II Chundrigar Connector"
+        ]
+      },
+      {
+        "name": "Gulshan-e-Iqbal",
+        "lat": 24.9200,
+        "lng": 67.0900,
+        "topics": [
+          "University Road Gridlock During Citywide Sit-ins (Dec 2024)",
+          "Hassan Square to Gulshan Corridor Rainwater Logging Emergency",
+          "Gulshan Transformer Blast Triggering Nighttime Traffic Diversions",
+          "Emergency Department Overflow During Monsoon Casualty Spike"
+        ]
+      },
+      {
+        "name": "Clifton",
+        "lat": 24.8138,
+        "lng": 67.0306,
+        "topics": [
+          "Clifton-Do Talwar Demonstration Causing Khayaban Diversions",
+          "Sea View High-Tide Storm Surge Flooding (Monsoon Window)",
+          "Clifton Bridge Waterlogging and Commercial District Traffic Freeze",
+          "Mass-Gathering Stampede Risk During Large Weekend Congregation"
+        ]
+      },
+      {
+        "name": "Orangi Town",
+        "lat": 24.9550,
+        "lng": 66.9920,
+        "topics": [
+          "Orangi Nullah Overflow Triggering Lane Closures and Home Inundation",
+          "Hilly-Edge Settlement Landslip After Prolonged Rainfall",
+          "Contaminated Water Supply Alert Following Floodwater Intrusion",
+          "Emergency Shelter Overflow During Area-Wide Displacement"
+        ]
+      }
+    ]
+  },
+  {
+    "city": "Lahore",
+    "areas": [
+      {
+        "name": "Johar Town",
+        "lat": 31.4697,
+        "lng": 74.2728,
+        "topics": [
+          "Johar Town Urban Flooding After Canal Road Overflow (Jul 2025)",
+          "Kalma Chowk Underpass Closure During Extreme Rainfall Episode",
+          "WASA Emergency Drainage Operation with Multi-Road Diversions",
+          "Smog Emergency Peak with Visibility-Related Multi-Vehicle Crashes"
+        ]
+      },
+      {
+        "name": "DHA Lahore",
+        "lat": 31.4694,
+        "lng": 74.3923,
+        "topics": [
+          "Grand Health Alliance Dharna at Charing Cross Causing DHA Commute Gridlock (Apr 2025)",
+          "Citywide Power Infrastructure Failure Triggering Signal Blackouts",
+          "Security Lockdown and Checkpoint Expansion on Major DHA Corridors",
+          "Ring Road Incident Chain Causing DHA Entry/Exit Bottlenecks"
+        ]
+      }
+    ]
+  },
+  {
+    "city": "Islamabad",
+    "areas": [
+      {
+        "name": "G-10",
+        "lat": 33.6919,
+        "lng": 73.0130,
+        "topics": [
+          "Red Zone Lockdown with Srinagar Highway Containers During D-Chowk Protest (2026)",
+          "Faizabad Sit-in Route Disruptions Affecting Islamabad-Rawalpindi Flow (Jul 2024)",
+          "Sector Flash Flooding and Basement Rescue During Monsoon Spell",
+          "Major Building Fire Drill Escalating into Real Evacuation Event"
+        ]
+      },
+      {
+        "name": "F-8",
+        "lat": 33.7073,
+        "lng": 73.0489,
+        "topics": [
+          "Islamabad Expressway and Faizabad Access Closure During Protest Mobilization",
+          "Hospital Surge Protocol Activation After Multi-Site Public Disorder",
+          "Telecom/Power Infrastructure Outage in High-Security Corridor",
+          "High-Density Crowd Control Incident Near Public Institutions"
+        ]
+      }
+    ]
+  }
+]
