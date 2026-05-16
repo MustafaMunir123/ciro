@@ -1,0 +1,8 @@
+{
+  "infrastructure": [
+    "pipe burst",
+    "water leakage",
+    "sewer overflow",
+    "gas leak"
+  ]
+}

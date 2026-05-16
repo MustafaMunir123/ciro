@@ -1,0 +1,53 @@
+{
+  "karachi": {
+    "core": [
+      "karachi",
+      "khi",
+      "city of lights"
+    ],
+
+    "central": [
+      "saddar",
+      "numaish",
+      "tariq road",
+      "bahadurabad",
+      "lalukhet",
+      "liaquatabad",
+      "nazimabad",
+      "gulshan e iqbal",
+      "gulshan",
+      "gulistan e johar",
+      "johar",
+      "shahrah e faisal",
+      "sharae faisal",
+      "airport",
+      "stadium road"
+    ],
+
+    "south": [
+      "clifton",
+      "dha",
+      "defence",
+      "seaview",
+      "boat basin",
+      "phase 1",
+      "phase 2",
+      "phase 5"
+    ],
+
+    "east": [
+      "malir",
+      "model colony",
+      "korangi",
+      "landhi",
+      "quaidabad"
+    ],
+
+    "west": [
+      "lyari",
+      "baldia",
+      "sher shah",
+      "maripur"
+    ]
+  }
+}
