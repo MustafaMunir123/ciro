@@ -427,6 +427,7 @@ function toCompactEvent(row: any) {
         scan_datetime: row?.scan_datetime ?? null,
         news_date: row?.news_date ?? null,
         updated_at: row?.updated_at ?? null,
+        is_user_submitted: row?.is_user_submitted ?? false,
     };
 }
 
@@ -552,6 +553,7 @@ export async function POST(req: NextRequest) {
             news_date: body?.news_date || extractNewsDate(body?.raw_input),
             raw_input: body?.raw_input || null,
             mission_context: body?.mission_context || null,
+            is_user_submitted: Boolean(body?.is_user_submitted),
             payload: body,
             updated_at: new Date().toISOString(),
         };
