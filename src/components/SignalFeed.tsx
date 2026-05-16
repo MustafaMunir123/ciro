@@ -163,12 +163,32 @@ function humanizeSlug(value: string): string {
 }
 
 function extractCityArea(incident: Incident): { city: string; area: string } {
+    const rawInput = incident.raw_input || "";
+    if (rawInput.startsWith("{")) {
+        try {
+            const parsed = JSON.parse(rawInput);
+            const rawCity = typeof parsed?.city === "string" ? parsed.city.trim() : "";
+            const rawArea = typeof parsed?.area === "string" ? parsed.area.trim() : "";
+            if (rawCity) {
+                return {
+                    city: rawCity,
+                    area: rawArea || "Unknown Area",
+                };
+            }
+        } catch {
+            // Ignore parse errors and continue with address-based extraction.
+        }
+    }
+
     const address = incident.location?.address?.trim();
     if (address && address.includes(",")) {
         const parts = address.split(",").map((part) => part.trim()).filter(Boolean);
         if (parts.length >= 2) {
-            const area = parts[0];
-            const city = parts[parts.length - 1];
+            const countryLike = new Set(["pakistan", "pk"]);
+            const last = parts[parts.length - 1];
+            const isCountrySuffix = countryLike.has(last.toLowerCase());
+            const city = isCountrySuffix ? parts[parts.length - 2] : last;
+            const area = parts.length >= 3 ? parts[0] : (isCountrySuffix ? "Unknown Area" : parts[0]);
             return { city, area };
         }
     }
@@ -276,10 +296,6 @@ export function SignalFeed({ className }: { className?: string }) {
             {/* Header */}
             <div className="shrink-0 p-4 border border-zinc-800 rounded-lg bg-gradient-to-r from-zinc-900 to-black flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <Activity className="w-4 h-4 text-emerald-500 relative z-10" />
-                        <div className="absolute inset-0 bg-emerald-500/20 blur-md animate-pulse" />
-                    </div>
                     <span className="font-bold text-sm tracking-widest text-zinc-100 uppercase">CIRO Reported Events</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -422,27 +438,6 @@ export function SignalFeed({ className }: { className?: string }) {
                                                 className="overflow-hidden"
                                             >
                                                 <div className="pt-4 space-y-4">
-                                                    {/* 1. COMMANDER OVERRIDES - VOICE OF GOD */}
-                                                    <div className="bg-gradient-to-r from-red-950/30 to-black border border-red-500/20 rounded-lg p-3 relative overflow-hidden group/voice hover:border-red-500/40 transition-colors">
-                                                        <div className="absolute top-0 right-0 p-1 opacity-20 group-hover/voice:opacity-100 transition-opacity">
-                                                            <Activity className="w-12 h-12 text-red-500 -mt-2 -mr-2" />
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <Shield className="w-3.5 h-3.5 text-red-400" />
-                                                            <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
-                                                                High Priority Intervention
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="relative z-10 flex gap-3 items-center">
-                                                            <CommanderControls incidentContext={incident} className="flex-1" />
-                                                            <div className="text-[9px] text-zinc-500 font-mono w-24 leading-tight opacity-70">
-                                                                Hold to inject Voice Command directly to Agent
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
                                                     {/* 2. PRIMARY ACTIONS GRID */}
                                                     <div className="grid grid-cols-2 gap-2">
                                                         {hasLocation && !incident.manual_trace_required && (
