@@ -14,12 +14,17 @@ const AREA_PROCESSING_DELAY_MS = 1500;
 const INTEL_API_DELAY_MS = Math.max(0, Number(process.env.NEXT_PUBLIC_INTEL_API_DELAY_MS || 1200));
 const WEATHER_API_DELAY_MS = Math.max(0, Number(process.env.NEXT_PUBLIC_WEATHER_API_DELAY_MS || 1200));
 const GEMINI_API_DELAY_MS = Math.max(0, Number(process.env.NEXT_PUBLIC_GEMINI_API_DELAY_MS || 2500));
+const GEMINI_MAX_RPM = Math.max(1, Math.min(4, Number(process.env.NEXT_PUBLIC_GEMINI_MAX_RPM || 4)));
+const GEMINI_MIN_INTERVAL_MS = Math.max(
+    15000, // hard floor for free-tier safety
+    Math.ceil(60000 / GEMINI_MAX_RPM)
+);
 
 type AreaTopicConfig = {
     name: string;
     lat: number;
     lng: number;
-    topics: string[];
+    topics: Array<string | { topic: string; place?: string }>;
 };
 
 type CityAreaTopicConfig = {
@@ -29,11 +34,26 @@ type CityAreaTopicConfig = {
 
 const cityAreaTopicConfig = pakistanAreaTopics as CityAreaTopicConfig[];
 
+type TopicDescriptor = {
+    topic: string;
+    place?: string;
+};
+
 function buildId(value: string): string {
     return value.replace(/[^a-zA-Z0-9]+/g, "-").replace(/(^-|-$)/g, "").toUpperCase();
 }
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function normalizeTopicDescriptor(topic: string | { topic: string; place?: string }): TopicDescriptor {
+    if (typeof topic === "string") {
+        return { topic };
+    }
+    return {
+        topic: topic.topic,
+        place: topic.place,
+    };
+}
 
 export function useDisasterSimulation() {
     const {
@@ -105,10 +125,28 @@ export function useDisasterSimulation() {
     const handledAuthIds = useRef<Set<string>>(new Set());
     const dynamicEventStreamRef = useRef<Array<Partial<Incident>> | null>(null);
     const dynamicEventLoadInProgressRef = useRef(false);
+    const lastGeminiRequestAtRef = useRef(0);
+
+    const waitForGeminiSlot = useCallback(async () => {
+        const now = Date.now();
+        const elapsed = now - lastGeminiRequestAtRef.current;
+        const remaining = GEMINI_MIN_INTERVAL_MS - elapsed;
+        if (remaining > 0) {
+            await delay(remaining);
+        }
+        lastGeminiRequestAtRef.current = Date.now();
+    }, []);
 
     const buildDynamicEventStream = useCallback(async (): Promise<Array<Partial<Incident>>> => {
         const events: Array<Partial<Incident>> = [];
         const nowIso = new Date().toISOString();
+        const weatherCache = new Map<string, {
+            currentFetched: boolean;
+            forecastFetched: boolean;
+            currentSummary: { condition: string; temp_c: string | number; humidity: string | number; wind_kph: string | number };
+            forecastSummary: { day1_condition: string; day1_rain_chance: string | number; day1_precip_mm: string | number };
+        }>();
+        const placeCache = new Map<string, { lat: number; lng: number; address: string }>();
         const log = (message: string) => {
             useSimulationStore.getState().addLog(`[${useSimulationStore.getState().time}s] ${message}`);
         };
@@ -117,14 +155,17 @@ export function useDisasterSimulation() {
             for (const areaEntry of cityEntry.areas) {
                 log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=START_AREA_SCAN`);
 
-                // 1) Build one consolidated area snapshot to reduce Gemini call volume.
+                // 1) Build per-topic intel payload.
+                const topicDescriptors = areaEntry.topics.map(normalizeTopicDescriptor);
                 const topicIntelPayload: Array<{
                     topic: string;
-                    records: Array<{ source: string; headline: string; url?: string }>;
+                    place?: string;
+                    records: Array<{ source: string; headline: string; url?: string; published_at?: string; tags?: string[] }>;
                     fallback?: string;
                 }> = [];
-                for (let topicIndex = 0; topicIndex < areaEntry.topics.length; topicIndex += 1) {
-                    const topic = areaEntry.topics[topicIndex];
+                for (let topicIndex = 0; topicIndex < topicDescriptors.length; topicIndex += 1) {
+                    const topicDescriptor = topicDescriptors[topicIndex];
+                    const topic = topicDescriptor.topic;
                     log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=FETCH_NEWS_INTEL | TOPIC="${topic}"`);
                     try {
                         const intelResponse = await fetch("/api/intel/fetch", {
@@ -156,113 +197,226 @@ export function useDisasterSimulation() {
                         const topRecords = Array.isArray(intelJson?.results) ? intelJson.results.slice(0, 3) : [];
                         topicIntelPayload.push({
                             topic,
+                            place: topicDescriptor.place,
                             records: topRecords.map((record: any) => ({
                                 source: record?.source || "TOPIC_FEED",
                                 headline: record?.title || "Untitled",
                                 url: record?.url || undefined,
+                                published_at: record?.published_at || undefined,
+                                tags: Array.isArray(record?.tags) ? record.tags : undefined,
                             })),
                         });
                     } catch (error: any) {
                         topicIntelPayload.push({
                             topic,
+                            place: topicDescriptor.place,
                             records: [],
                             fallback: error?.message || "Unknown error",
                         });
                     }
 
-                    if (INTEL_API_DELAY_MS > 0 && topicIndex < areaEntry.topics.length - 1) {
+                    if (INTEL_API_DELAY_MS > 0 && topicIndex < topicDescriptors.length - 1) {
                         log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=INTEL_RATE_LIMIT_DELAY_${INTEL_API_DELAY_MS}MS`);
                         await delay(INTEL_API_DELAY_MS);
                     }
                 }
                 log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=DISASTER_INTEL_READY`);
 
-                // 2) Current weather data (for consolidated incident)
-                log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=FETCH_CURRENT_WEATHER`);
-                let currentWeatherSummary = {
-                    condition: "Unknown",
-                    temp_c: "N/A",
-                    humidity: "N/A",
-                    wind_kph: "N/A",
-                };
-                try {
-                    const currentResponse = await fetch(`/api/weather/current?lat=${areaEntry.lat}&lng=${areaEntry.lng}`);
-                    if (currentResponse.ok) {
-                        const currentJson = await currentResponse.json();
-                        const current = currentJson?.current;
-                        currentWeatherSummary = {
-                            condition: current?.condition || "Unknown",
-                            temp_c: current?.temp_c ?? "N/A",
-                            humidity: current?.humidity ?? "N/A",
-                            wind_kph: current?.wind_kph ?? "N/A",
-                        };
-                        log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=CURRENT_WEATHER_READY`);
-                    }
-                } catch (error: any) {
-                    // Non-fatal: continue with other event sources.
-                    log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=CURRENT_WEATHER_FAILED | REASON=${error?.message || "unknown"}`);
-                }
-                if (WEATHER_API_DELAY_MS > 0) {
-                    log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=WEATHER_RATE_LIMIT_DELAY_${WEATHER_API_DELAY_MS}MS`);
-                    await delay(WEATHER_API_DELAY_MS);
-                }
-
-                // 3) Forecast weather data (for consolidated incident)
-                log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=FETCH_FORECAST_WEATHER`);
-                let forecastWeatherSummary = {
-                    day1_condition: "Unknown",
-                    day1_rain_chance: "N/A",
-                    day1_precip_mm: "N/A",
-                };
-                try {
-                    const forecastResponse = await fetch(`/api/weather/forecast?lat=${areaEntry.lat}&lng=${areaEntry.lng}&days=3`);
-                    if (forecastResponse.ok) {
-                        const forecastJson = await forecastResponse.json();
-                        const firstDay = Array.isArray(forecastJson?.forecast_days) ? forecastJson.forecast_days[0] : null;
-                        forecastWeatherSummary = {
-                            day1_condition: firstDay?.condition || "Unknown",
-                            day1_rain_chance: firstDay?.chance_of_rain ?? "N/A",
-                            day1_precip_mm: firstDay?.totalprecip_mm ?? "N/A",
-                        };
-                        log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=FORECAST_WEATHER_READY`);
-                    }
-                } catch (error: any) {
-                    // Non-fatal: continue with other event sources.
-                    log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=FORECAST_WEATHER_FAILED | REASON=${error?.message || "unknown"}`);
-                }
-
-                const consolidatedSignal = {
-                    city: cityEntry.city,
-                    area: areaEntry.name,
-                    lat: areaEntry.lat,
-                    lng: areaEntry.lng,
-                    intel_by_topic: topicIntelPayload,
-                    weather: {
-                        current: currentWeatherSummary,
-                        forecast_day1: forecastWeatherSummary,
-                    },
-                };
-                const primaryTopic = areaEntry.topics[0] || `${areaEntry.name} Incident`;
-                const extraTopicCount = Math.max(0, areaEntry.topics.length - 1);
-                const eventTitle = extraTopicCount > 0
-                    ? `${primaryTopic} (+${extraTopicCount} more)`
-                    : primaryTopic;
-
-                events.push({
-                    id: `EVT-AREA-SNAPSHOT-${buildId(cityEntry.city)}-${buildId(areaEntry.name)}`,
-                    type: "TEXT",
-                    category: eventTitle,
-                    raw_input: JSON.stringify(consolidatedSignal, null, 2),
-                    timestamp: nowIso,
-                    status: "PENDING",
-                    location: {
+                for (const topicEntry of topicIntelPayload) {
+                    const topicName = String(topicEntry.topic || `${areaEntry.name} Incident`);
+                    const resolvedPlace = topicEntry.place?.trim() || topicName;
+                    const placeQuery = `${resolvedPlace}, ${areaEntry.name}, ${cityEntry.city}, Pakistan`;
+                    let eventCoords = {
                         lat: areaEntry.lat,
                         lng: areaEntry.lng,
-                        address: `${areaEntry.name}, ${cityEntry.city}`,
-                    },
-                    mission_context: "[CONSOLIDATED AREA SIGNAL] Analyze all topics in one pass and return structured response grouped by topic and weather risk.",
-                });
-                log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=CONSOLIDATED_AREA_SIGNAL_READY`);
+                        address: `${resolvedPlace}, ${areaEntry.name}, ${cityEntry.city}`,
+                    };
+
+                    if (placeCache.has(placeQuery)) {
+                        eventCoords = placeCache.get(placeQuery)!;
+                    } else {
+                        log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=RESOLVE_TOPIC_PLACE | PLACE="${resolvedPlace}"`);
+                        try {
+                            const placeResponse = await fetch(`/api/maps/place-search?query=${encodeURIComponent(placeQuery)}`);
+                            if (placeResponse.ok) {
+                                const placeJson = await placeResponse.json();
+                                eventCoords = {
+                                    lat: Number(placeJson?.lat) || areaEntry.lat,
+                                    lng: Number(placeJson?.lng) || areaEntry.lng,
+                                    address: placeJson?.formatted_address || eventCoords.address,
+                                };
+                                placeCache.set(placeQuery, eventCoords);
+                            }
+                        } catch {
+                            // Keep area fallback coords.
+                        }
+                    }
+
+                    const weatherKey = `${eventCoords.lat.toFixed(4)},${eventCoords.lng.toFixed(4)}`;
+                    let currentWeatherFetched = false;
+                    let forecastWeatherFetched = false;
+                    let currentWeatherSummary: { condition: string; temp_c: string | number; humidity: string | number; wind_kph: string | number } = {
+                        condition: "Unknown",
+                        temp_c: "N/A",
+                        humidity: "N/A",
+                        wind_kph: "N/A",
+                    };
+                    let forecastWeatherSummary: { day1_condition: string; day1_rain_chance: string | number; day1_precip_mm: string | number } = {
+                        day1_condition: "Unknown",
+                        day1_rain_chance: "N/A",
+                        day1_precip_mm: "N/A",
+                    };
+
+                    if (weatherCache.has(weatherKey)) {
+                        const cached = weatherCache.get(weatherKey)!;
+                        currentWeatherFetched = cached.currentFetched;
+                        forecastWeatherFetched = cached.forecastFetched;
+                        currentWeatherSummary = cached.currentSummary;
+                        forecastWeatherSummary = cached.forecastSummary;
+                    } else {
+                        log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=FETCH_CURRENT_WEATHER | PLACE="${resolvedPlace}"`);
+                        try {
+                            const currentResponse = await fetch(`/api/weather/current?lat=${eventCoords.lat}&lng=${eventCoords.lng}`);
+                            if (currentResponse.ok) {
+                                const currentJson = await currentResponse.json();
+                                const current = currentJson?.current;
+                                currentWeatherSummary = {
+                                    condition: current?.condition || "Unknown",
+                                    temp_c: current?.temp_c ?? "N/A",
+                                    humidity: current?.humidity ?? "N/A",
+                                    wind_kph: current?.wind_kph ?? "N/A",
+                                };
+                                currentWeatherFetched = true;
+                            }
+                        } catch {
+                            // Non-fatal.
+                        }
+                        if (WEATHER_API_DELAY_MS > 0) {
+                            log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=WEATHER_RATE_LIMIT_DELAY_${WEATHER_API_DELAY_MS}MS`);
+                            await delay(WEATHER_API_DELAY_MS);
+                        }
+                        log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=FETCH_FORECAST_WEATHER | PLACE="${resolvedPlace}"`);
+                        try {
+                            const forecastResponse = await fetch(`/api/weather/forecast?lat=${eventCoords.lat}&lng=${eventCoords.lng}&days=3`);
+                            if (forecastResponse.ok) {
+                                const forecastJson = await forecastResponse.json();
+                                const firstDay = Array.isArray(forecastJson?.forecast_days) ? forecastJson.forecast_days[0] : null;
+                                forecastWeatherSummary = {
+                                    day1_condition: firstDay?.condition || "Unknown",
+                                    day1_rain_chance: firstDay?.chance_of_rain ?? "N/A",
+                                    day1_precip_mm: firstDay?.totalprecip_mm ?? "N/A",
+                                };
+                                forecastWeatherFetched = true;
+                            }
+                        } catch {
+                            // Non-fatal.
+                        }
+                        weatherCache.set(weatherKey, {
+                            currentFetched: currentWeatherFetched,
+                            forecastFetched: forecastWeatherFetched,
+                            currentSummary: currentWeatherSummary,
+                            forecastSummary: forecastWeatherSummary,
+                        });
+                    }
+
+                    const topicSignal = {
+                        city: cityEntry.city,
+                        area: areaEntry.name,
+                        lat: areaEntry.lat,
+                        lng: areaEntry.lng,
+                        area_location: {
+                            lat: areaEntry.lat,
+                            lng: areaEntry.lng,
+                            address: `${areaEntry.name}, ${cityEntry.city}`,
+                        },
+                        event_location: {
+                            lat: eventCoords.lat,
+                            lng: eventCoords.lng,
+                            address: eventCoords.address,
+                        },
+                        place: resolvedPlace,
+                        topic: topicName,
+                        intel_by_topic: [topicEntry],
+                        weather: {
+                            current: currentWeatherSummary,
+                            forecast_day1: forecastWeatherSummary,
+                        },
+                    };
+
+                    const sourceTrailSet = new Set<string>();
+                    const eventTagSet = new Set<string>();
+                    const publishedAtCandidates: number[] = [];
+                    const topicText = topicName.toLowerCase();
+
+                    if (topicText.includes("road") || topicText.includes("gridlock") || topicText.includes("closure") || topicText.includes("block")) {
+                        eventTagSet.add("roadblockage");
+                    }
+                    if (topicText.includes("fire") || topicText.includes("blast") || topicText.includes("smoke")) {
+                        eventTagSet.add("fireHazard");
+                    }
+                    if (topicText.includes("flood") || topicText.includes("rainwater") || topicText.includes("monsoon")) {
+                        eventTagSet.add("floodRisk");
+                    }
+                    if (topicText.includes("protest") || topicText.includes("sit-in") || topicText.includes("dharna") || topicText.includes("hartal")) {
+                        eventTagSet.add("civilUnrest");
+                    }
+
+                    const topicRecords = Array.isArray(topicEntry.records) ? topicEntry.records : [];
+                    topicRecords.forEach((record) => {
+                        if (record.source) sourceTrailSet.add(String(record.source));
+                        if (Array.isArray(record.tags)) {
+                            record.tags.forEach((tag) => {
+                                if (typeof tag === "string" && tag.trim().length > 0) {
+                                    eventTagSet.add(tag.trim());
+                                }
+                            });
+                        }
+                        if (typeof record.published_at === "string") {
+                            const ts = Date.parse(record.published_at);
+                            if (Number.isFinite(ts)) publishedAtCandidates.push(ts);
+                        }
+                    });
+
+                    if (currentWeatherFetched) sourceTrailSet.add("WEATHER_CURRENT");
+                    if (forecastWeatherFetched) sourceTrailSet.add("WEATHER_FORECAST");
+                    if (currentWeatherFetched || forecastWeatherFetched) eventTagSet.add("weather");
+
+                    const newsDate = publishedAtCandidates.length > 0
+                        ? new Date(Math.max(...publishedAtCandidates)).toISOString()
+                        : undefined;
+
+                    events.push({
+                        id: `EVT-TOPIC-${buildId(cityEntry.city)}-${buildId(areaEntry.name)}-${buildId(topicName)}`,
+                        type: "TEXT",
+                        category: topicName,
+                        place: resolvedPlace,
+                        event_tags: Array.from(eventTagSet),
+                        source_trail: Array.from(sourceTrailSet),
+                        road_coords: {
+                            lat: eventCoords.lat,
+                            lng: eventCoords.lng,
+                            source: "GOOGLE_PLACE_TEXT_SEARCH",
+                        },
+                        ai_summary: `Topic signal generated for ${topicName} in ${areaEntry.name}, ${cityEntry.city}.`,
+                        scan_datetime: nowIso,
+                        news_date: newsDate,
+                        raw_input: JSON.stringify(topicSignal, null, 2),
+                        timestamp: nowIso,
+                        status: "PENDING",
+                        location: {
+                            lat: eventCoords.lat,
+                            lng: eventCoords.lng,
+                            address: eventCoords.address,
+                        },
+                        area_location: {
+                            lat: areaEntry.lat,
+                            lng: areaEntry.lng,
+                            address: `${areaEntry.name}, ${cityEntry.city}`,
+                        },
+                        mission_context: "[TOPIC SIGNAL] Analyze this single topic with weather context and return structured response.",
+                    });
+                }
+                log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=TOPIC_SIGNALS_READY`);
 
                 log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=AREA_SCAN_COMPLETE`);
                 log(`[AGENTIC-PIPELINE] CITY=${cityEntry.city} | AREA=${areaEntry.name} | TASK=AREA_SLEEP_${AREA_PROCESSING_DELAY_MS}MS`);
@@ -458,6 +612,7 @@ export function useDisasterSimulation() {
                         if (GEMINI_API_DELAY_MS > 0) {
                             await delay(GEMINI_API_DELAY_MS);
                         }
+                        await waitForGeminiSlot();
                         const response = await fetch("/api/coordinate/stream", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
@@ -541,6 +696,7 @@ export function useDisasterSimulation() {
                         if (GEMINI_API_DELAY_MS > 0) {
                             await delay(GEMINI_API_DELAY_MS);
                         }
+                        await waitForGeminiSlot();
                         const response = await fetch("/api/coordinate/stream", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
@@ -667,6 +823,7 @@ export function useDisasterSimulation() {
                             if (GEMINI_API_DELAY_MS > 0) {
                                 await delay(GEMINI_API_DELAY_MS);
                             }
+                            await waitForGeminiSlot();
                             const overrideResponse = await fetch("/api/coordinate/stream", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
@@ -796,7 +953,7 @@ export function useDisasterSimulation() {
         };
 
         processQueue();
-    }, [time, isPlaying, allIncidents, isMockMode, updateIncident, addLog, throttledSetRawThinkingProcess]);
+    }, [time, isPlaying, allIncidents, isMockMode, updateIncident, addLog, throttledSetRawThinkingProcess, waitForGeminiSlot]);
 
 
     // PROTOCOL ZERO: Executor (Handles BOTH Manual and Auto-Approvals)

@@ -10,6 +10,12 @@ export interface Incident {
         lng: number;
         address?: string;
     };
+    area_location?: {
+        lat: number;
+        lng: number;
+        address?: string;
+    };
+    place?: string;
     status: "PENDING" | "ANALYZING" | "TRIAGED" | "RESOLVED";
     // Enriched Fields from Agents
     priority?: Priority;
@@ -66,6 +72,19 @@ export interface Incident {
 
     // Voice Context Injection
     transcript_context?: string;
+
+    // External persistence fields
+    event_tags?: string[];
+    road_coords?: {
+        lat?: number;
+        lng?: number;
+        points?: Array<{ lat: number; lng: number }>;
+        source?: string;
+    };
+    ai_summary?: string;
+    news_date?: string;
+    source_trail?: string[];
+    scan_datetime?: string;
 }
 
 export interface AgentAuditLog {

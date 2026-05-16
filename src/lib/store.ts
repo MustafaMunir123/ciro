@@ -58,6 +58,7 @@ interface SimulationState {
 
     // Reset function to clear state
     resetSimulation: () => void;
+    hydrateIncidents: (incidents: Incident[]) => void;
 }
 
 // Initial State for resets
@@ -83,6 +84,17 @@ const initialState = {
     spotlightId: null,
     processingBatch: [] as string[],
 };
+
+function syncIncidentToSupabase(incident: Incident) {
+    if (typeof window === "undefined") return;
+    fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(incident),
+    }).catch(() => {
+        // Non-fatal: keep local simulation responsive even if external persistence fails.
+    });
+}
 
 export const useSimulationStore = create<SimulationState>()(
     persist(
@@ -114,16 +126,28 @@ export const useSimulationStore = create<SimulationState>()(
                 return { isPlaying };
             }),
 
-            addIncident: (incident) => set((state) => ({
-                incidents: [...state.incidents, incident],
-                logs: [...state.logs, `[${state.time}s] New Signal: ${incident.id}`]
-            })),
+            addIncident: (incident) => {
+                set((state) => ({
+                    incidents: [...state.incidents, incident],
+                    logs: [...state.logs, `[${state.time}s] New Signal: ${incident.id}`]
+                }));
+                syncIncidentToSupabase(incident);
+            },
 
-            updateIncident: (id, updates) => set((state) => ({
-                incidents: state.incidents.map((inc) =>
-                    inc.id === id ? { ...inc, ...updates } : inc
-                )
-            })),
+            updateIncident: (id, updates) => set((state) => {
+                let updatedIncident: Incident | null = null;
+                const incidents = state.incidents.map((inc) => {
+                    if (inc.id === id) {
+                        updatedIncident = { ...inc, ...updates };
+                        return updatedIncident;
+                    }
+                    return inc;
+                });
+                if (updatedIncident) {
+                    queueMicrotask(() => syncIncidentToSupabase(updatedIncident as Incident));
+                }
+                return { incidents };
+            }),
 
             addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
 
@@ -166,6 +190,15 @@ export const useSimulationStore = create<SimulationState>()(
             setProcessingBatch: (processingBatch) => set({ processingBatch }),
 
             resetSimulation: () => set(initialState),
+            hydrateIncidents: (incomingIncidents) => set((state) => {
+                const merged = new Map<string, Incident>();
+                state.incidents.forEach((incident) => merged.set(incident.id, incident));
+                incomingIncidents.forEach((incident) => {
+                    const previous = merged.get(incident.id);
+                    merged.set(incident.id, previous ? { ...previous, ...incident } : incident);
+                });
+                return { incidents: Array.from(merged.values()) };
+            }),
         }),
         {
             name: "simulation-store", // Storage key

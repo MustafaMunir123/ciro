@@ -226,8 +226,8 @@ export function ReasoningLog({ className }: { className?: string }) {
                     displayLogs.map((log, i) => {
                         const parsed = parseLogLine(log);
                         return (
-                            <div
-                                key={i}
+                        <div
+                            key={i}
                                 className="text-blue-100/80 py-1.5 hover:bg-blue-500/10 px-2 rounded transition-colors border border-transparent hover:border-blue-500/20"
                             >
                                 {parsed.isStructured ? (
@@ -248,7 +248,7 @@ export function ReasoningLog({ className }: { className?: string }) {
                                         <span className="break-all">{parsed.message}</span>
                                     </div>
                                 )}
-                            </div>
+                        </div>
                         );
                     })
                 )}
