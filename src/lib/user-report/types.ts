@@ -71,6 +71,8 @@ export interface NearbyScanEvent {
     event_id: string;
     lat: number | null;
     lng: number | null;
+    area_lat: number | null;
+    area_lng: number | null;
     event_tags: string[] | null;
     ai_summary: string | null;
     category: string | null;
@@ -79,3 +81,10 @@ export interface NearbyScanEvent {
     is_user_submitted?: boolean | null;
     distance_km?: number;
 }
+
+/** Row after geo scoring — coordinates are guaranteed finite numbers. */
+export type ScoredNearbyEvent = Omit<NearbyScanEvent, "lat" | "lng" | "distance_km"> & {
+    lat: number;
+    lng: number;
+    distance_km: number;
+};
