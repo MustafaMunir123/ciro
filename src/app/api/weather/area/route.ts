@@ -17,7 +17,7 @@ interface CityConfig {
 }
 
 function findArea(city: string, area: string): AreaConfig | null {
-    const cityEntry = (dataset as CityConfig[]).find(
+    const cityEntry = (dataset as unknown as CityConfig[]).find(
         (entry) => entry.city.toLowerCase() === city.toLowerCase(),
     );
     if (!cityEntry) return null;

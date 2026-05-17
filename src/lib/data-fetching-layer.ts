@@ -390,7 +390,7 @@ async function searchSocialApi(input: DisasterIntelQuery): Promise<DisasterIntel
                 const mapped = posts.map((item: Record<string, any>, idx: number) =>
                     mapRecord("SOCIAL_API", item, input, sourceIndexOffset + idx)
                 );
-                allRecords.push(...mapped.map((record) => ({
+                allRecords.push(...mapped.map((record: DisasterIntelRecord) => ({
                     ...record,
                     author: record.author || source.name,
                 })));
