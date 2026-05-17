@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { MissionReportModal } from "@/components/MissionReportModal";
+import { resolveIsUserSubmittedFromRow } from "@/lib/incident-source";
 
 const TacticalMap = dynamic(() => import("@/components/TacticalMap").then(mod => mod.TacticalMap), { ssr: false });
 
@@ -156,6 +157,13 @@ export default function ResponderView() {
                   ? { lat: row.area_lat, lng: row.area_lng, address: undefined }
                   : undefined
               ),
+              is_user_submitted: resolveIsUserSubmittedFromRow({
+                is_user_submitted: row?.is_user_submitted,
+                event_id: row?.event_id || payload?.id,
+                source_trail: row?.source_trail ?? payload?.source_trail,
+                raw_input: row?.raw_input ?? payload?.raw_input,
+                payload,
+              }),
             };
           })
           .filter(Boolean);

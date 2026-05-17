@@ -46,6 +46,12 @@ alter table public.scan_events add column if not exists scan_datetime timestampt
 alter table public.scan_events add column if not exists news_date timestamptz;
 alter table public.scan_events add column if not exists area_lat double precision;
 alter table public.scan_events add column if not exists area_lng double precision;
+alter table public.scan_events add column if not exists is_user_submitted boolean not null default false;
+
+create index if not exists scan_events_lat_lng_idx on public.scan_events (lat, lng)
+  where lat is not null and lng is not null;
+create index if not exists scan_events_is_user_submitted_idx on public.scan_events (is_user_submitted)
+  where is_user_submitted = true;
 
 -- Patch migration: append UUID suffix to legacy event IDs that don't already have one.
 create extension if not exists pgcrypto;
