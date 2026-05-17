@@ -69,7 +69,7 @@ function pickEventFields(row: ScanEventRow, fields: string[]) {
     return selected;
 }
 
-async function fetchCityEventsViaSupabaseRest(city: string): Promise<{ data: ScanEventRow[] | null; error: string | null }> {
+async function fetchCityEventsViaSupabaseRest(city?: string | null): Promise<{ data: ScanEventRow[] | null; error: string | null }> {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
     if (!url || !key) {
@@ -78,7 +78,9 @@ async function fetchCityEventsViaSupabaseRest(city: string): Promise<{ data: Sca
 
     const query = new URLSearchParams();
     query.set("select", "*");
-    query.set("city", `ilike.${city}`);
+    if (city?.trim()) {
+        query.set("city", `ilike.${city.trim()}`);
+    }
     query.set("order", "updated_at.desc");
     query.set("limit", "2000");
     const endpoint = `${url}/rest/v1/${TABLE_NAME}?${query.toString()}`;
@@ -125,24 +127,23 @@ export async function GET(req: NextRequest) {
         const limitParam = Number(searchParams.get("limit") || 50);
         const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(500, limitParam)) : 50;
 
-        if (!city) {
-            return NextResponse.json({ error: "Missing required query param: city" }, { status: 400 });
-        }
         if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
             return NextResponse.json({ error: "Missing/invalid lat or lng query params" }, { status: 400 });
         }
 
         const supabase = getSupabaseServiceClient();
         let rows: ScanEventRow[] = [];
-
-        const { data, error } = await supabase
+        let query = supabase
             .from(TABLE_NAME)
             .select("*")
-            .ilike("city", city)
             .not("area_lat", "is", null)
             .not("area_lng", "is", null)
             .order("updated_at", { ascending: false })
             .limit(2000);
+        if (city) {
+            query = query.ilike("city", city);
+        }
+        const { data, error } = await query;
 
         if (error) {
             if (shouldUseSupabaseTlsFallback(error)) {
@@ -159,7 +160,9 @@ export async function GET(req: NextRequest) {
         }
 
         const cityNorm = normalizeCity(city);
-        const cityRows = rows.filter((row) => normalizeCity(row?.city) === cityNorm);
+        const cityRows = cityNorm
+            ? rows.filter((row) => normalizeCity(row?.city) === cityNorm)
+            : rows;
         if (cityRows.length === 0) {
             return NextResponse.json({
                 count: 0,
@@ -210,7 +213,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             count: events.length,
             nearest_area: {
-                city: city,
+                city: city || nearest.rows[0]?.city || null,
                 area: nearest.area,
                 area_lat: nearest.area_lat,
                 area_lng: nearest.area_lng,

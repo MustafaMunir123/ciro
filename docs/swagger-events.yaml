@@ -141,15 +141,15 @@ paths:
         - List Nearest Events
       summary: List Nearest Events
       description: |
-        Returns only events from the nearest area cluster (using `area_lat/area_lng`) for a city.
+        Returns events from the nearest area cluster (using `area_lat/area_lng`), optionally scoped by city.
 
         Example requested endpoint:
         `http://localhost:3000/api/events/nearest?city=Karachi&lat=24.8&lng=67.19&limit=50&fields=event_id,city,area,thumbnail,priority,scan_datetime,category,lat,lng`
       parameters:
         - in: query
           name: city
-          description: City name to match (case-insensitive exact match).
-          required: true
+          description: Optional city name filter (case-insensitive).
+          required: false
           schema:
             type: string
             example: Karachi
