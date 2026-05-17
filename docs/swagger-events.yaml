@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Emergency Dashboard Events API
   version: 1.0.0
-  description: Swagger spec for internal event listing endpoints.
+  description: Swagger spec for event listing and citizen user-report submission endpoints.
 servers:
   - url: http://localhost:3000
 tags:
@@ -12,6 +12,8 @@ tags:
     description: Read a single event by event_id filter.
   - name: List Nearest Events
     description: Read nearest-area events by city and user coordinates.
+  - name: User Reports
+    description: Submit citizen disaster reports with optional photo attachment.
 paths:
   /api/events:
     get:
@@ -270,3 +272,416 @@ paths:
                 properties:
                   error:
                     type: string
+  /api/user-reports/submit:
+    post:
+      tags:
+        - User Reports
+      summary: Submit User Report
+      description: |
+        Accepts a citizen disaster report as `multipart/form-data`.
+
+        Processing pipeline:
+        1. Parse free-text and coordinates with Gemini
+        2. Fetch related news/social intel (SerpAPI + social providers)
+        3. Deduplicate against nearby persisted `scan_events`
+        4. Store a new event with `is_user_submitted: true` (skipped when duplicate)
+
+        Example:
+        ```
+        curl -X POST http://localhost:3000/api/user-reports/submit \
+          -F "text=Fire at Gul Plaza, smoke on main road" \
+          -F "lat=24.8607" \
+          -F "lng=67.0011" \
+          -F "city=Karachi" \
+          -F "area=Saddar" \
+          -F "photo=@./incident.jpg"
+        ```
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - text
+                - lat
+                - lng
+              properties:
+                text:
+                  type: string
+                  maxLength: 4000
+                  description: Free-text incident description (required).
+                  example: Fire at Gul Plaza shopping center, heavy smoke visible from main road
+                lat:
+                  type: number
+                  format: double
+                  description: Pin latitude in WGS84 (required).
+                  example: 24.8607
+                lng:
+                  type: number
+                  format: double
+                  description: Pin longitude in WGS84 (required).
+                  example: 67.0011
+                city:
+                  type: string
+                  description: Optional city hint; may be enriched by AI parsing.
+                  example: Karachi
+                area:
+                  type: string
+                  description: Optional area/neighborhood hint.
+                  example: Saddar
+                photo:
+                  type: string
+                  format: binary
+                  description: Optional incident image. Alias field name is `image`. Max 8 MB. Allowed formats JPEG, PNG, WebP, HEIC (magic-byte validated).
+                image:
+                  type: string
+                  format: binary
+                  description: Alias for `photo`.
+      responses:
+        "201":
+          description: New user report stored successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserReportSubmitResponse"
+              examples:
+                stored:
+                  summary: New event persisted
+                  value:
+                    status: stored
+                    parsed:
+                      language: en
+                      summary_en: Fire reported at Gul Plaza with heavy smoke on the main road.
+                      summary_original: Fire at Gul Plaza, smoke on main road
+                      topic: Gul Plaza Fire
+                      place: Gul Plaza
+                      city: Karachi
+                      area: Saddar
+                      event_tags: [fire, smoke, commercial]
+                      intel_search_query: Gul Plaza fire Karachi Saddar
+                    dedupe:
+                      is_duplicate: false
+                      matched_event_id: null
+                      reason: null
+                      checked_nearby_count: 3
+                    event:
+                      event_id: EVT-USER-3111857B-DFD0-4AA7-941F-DAD78DCCF30D
+                      is_user_submitted: true
+                    topic_payload:
+                      city: Karachi
+                      event_tags: [fire, smoke, commercial]
+                      source_trail:
+                        - type: social
+                          json_dump_response:
+                            source: USER_SUBMITTED
+                    intel:
+                      query: Gul Plaza fire Karachi Saddar
+                      city: Karachi
+                      area: Saddar
+                      fetched_at: "2026-05-16T15:16:10.518Z"
+                      results: []
+                      source_health:
+                        news_api: configured
+                        social_api: configured
+        "200":
+          description: Duplicate nearby submission detected; no new row stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserReportSubmitResponse"
+              examples:
+                duplicate:
+                  summary: Matched an existing nearby event
+                  value:
+                    status: duplicate
+                    parsed:
+                      language: en
+                      summary_en: Fire reported at Gul Plaza with heavy smoke on the main road.
+                      summary_original: Fire at Gul Plaza, smoke on main road
+                      topic: Gul Plaza Fire
+                      place: Gul Plaza
+                      city: Karachi
+                      area: Saddar
+                      event_tags: [fire, smoke, commercial]
+                      intel_search_query: Gul Plaza fire Karachi Saddar
+                    dedupe:
+                      is_duplicate: true
+                      matched_event_id: EVT-USER-3111857B-DFD0-4AA7-941F-DAD78DCCF30D
+                      reason: similar_tags_and_proximity
+                      checked_nearby_count: 5
+                    topic_payload:
+                      city: Karachi
+                      event_tags: [fire, smoke, commercial]
+                      source_trail:
+                        - type: social
+                          json_dump_response:
+                            source: USER_SUBMITTED
+                    intel:
+                      query: Gul Plaza fire Karachi Saddar
+                      city: Karachi
+                      area: Saddar
+                      fetched_at: "2026-05-16T15:16:10.518Z"
+                      results: []
+                      source_health:
+                        news_api: configured
+                        social_api: configured
+        "400":
+          description: Missing/invalid form fields or image validation failure.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                missingText:
+                  summary: Missing required text
+                  value:
+                    error: "Missing required field: text"
+                invalidImage:
+                  summary: Unsupported image type
+                  value:
+                    error: "Unsupported image format. Allowed: JPEG, PNG, WebP, HEIC."
+        "500":
+          description: Submission pipeline failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [error]
+                  error:
+                    type: string
+              example:
+                status: error
+                error: User report submit failed
+components:
+  schemas:
+    ParsedUserSubmission:
+      type: object
+      required:
+        - language
+        - summary_en
+        - summary_original
+        - topic
+        - place
+        - city
+        - area
+        - event_tags
+        - intel_search_query
+      properties:
+        language:
+          type: string
+          enum: [en, ur, mixed]
+        summary_en:
+          type: string
+        summary_original:
+          type: string
+        topic:
+          type: string
+        place:
+          type: string
+        city:
+          type: string
+        area:
+          type: string
+        event_tags:
+          type: array
+          items:
+            type: string
+        intel_search_query:
+          type: string
+    DedupeResult:
+      type: object
+      required:
+        - is_duplicate
+        - matched_event_id
+        - reason
+        - checked_nearby_count
+      properties:
+        is_duplicate:
+          type: boolean
+        matched_event_id:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        checked_nearby_count:
+          type: integer
+          minimum: 0
+    DisasterIntelRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+          description: Provider label, e.g. NEWS_API or SOCIAL_API.
+        title:
+          type: string
+        content:
+          type: string
+        url:
+          type: string
+        author:
+          type: string
+        published_at:
+          type: string
+        thumbnail:
+          type: string
+        city:
+          type: string
+        area:
+          type: string
+        topic:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    DisasterIntelResponse:
+      type: object
+      required:
+        - query
+        - city
+        - area
+        - fetched_at
+        - results
+        - source_health
+      properties:
+        query:
+          type: string
+        city:
+          type: string
+        area:
+          type: string
+        topic:
+          type: string
+        fetched_at:
+          type: string
+          format: date-time
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/DisasterIntelRecord"
+        source_health:
+          type: object
+          properties:
+            news_api:
+              type: string
+              enum: [configured, missing_config, error]
+            social_api:
+              type: string
+              enum: [configured, missing_config, error]
+        provider_errors:
+          type: array
+          items:
+            type: string
+    SourceTrailEntry:
+      type: object
+      required:
+        - type
+        - json_dump_response
+      properties:
+        type:
+          type: string
+          enum: [news, social, weather]
+        json_dump_response:
+          description: Object marker for user submissions or array batch for intel records.
+    UserSubmissionTopicPayload:
+      type: object
+      properties:
+        city:
+          type: string
+        areas:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              lat:
+                type: number
+                format: double
+              lng:
+                type: number
+                format: double
+              topics:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    topic:
+                      type: string
+                    place:
+                      type: string
+        user_submission:
+          type: object
+          properties:
+            summary_en:
+              type: string
+            summary_original:
+              type: string
+            language:
+              type: string
+              enum: [en, ur, mixed]
+            coordinates:
+              type: object
+              properties:
+                lat:
+                  type: number
+                  format: double
+                lng:
+                  type: number
+                  format: double
+            original_text:
+              type: string
+        intel_by_topic:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        event_tags:
+          type: array
+          items:
+            type: string
+        source_trail:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceTrailEntry"
+    UserReportSubmitResponse:
+      type: object
+      required:
+        - status
+        - parsed
+        - intel
+        - topic_payload
+        - dedupe
+      properties:
+        status:
+          type: string
+          enum: [stored, duplicate, error]
+        parsed:
+          $ref: "#/components/schemas/ParsedUserSubmission"
+        intel:
+          $ref: "#/components/schemas/DisasterIntelResponse"
+        topic_payload:
+          $ref: "#/components/schemas/UserSubmissionTopicPayload"
+        dedupe:
+          $ref: "#/components/schemas/DedupeResult"
+        event:
+          type: object
+          properties:
+            event_id:
+              type: string
+              example: EVT-USER-3111857B-DFD0-4AA7-941F-DAD78DCCF30D
+            is_user_submitted:
+              type: boolean
+              example: true
+        error:
+          type: string
