@@ -18,6 +18,7 @@ import {
     Target
 } from "lucide-react";
 import { CommanderControls } from "./CommanderControls";
+import { isUserSubmittedIncident } from "@/lib/incident-source";
 
 const getPriorityStyles = (p?: string) => {
     switch (p) {
@@ -59,6 +60,14 @@ const getPriorityStyles = (p?: string) => {
     }
 };
 
+const USER_SUBMITTED_STYLES = {
+    border: "border-violet-500/50",
+    bg: "bg-violet-950/25",
+    text: "text-violet-300",
+    indicator: "bg-violet-500",
+    shadow: "shadow-violet-900/25",
+};
+
 const getTypeIcon = (type: string | undefined) => {
     switch (type) {
         case "AUDIO": return <Mic className="w-3.5 h-3.5" />;
@@ -68,8 +77,32 @@ const getTypeIcon = (type: string | undefined) => {
     }
 };
 
+function getUserSubmissionPreview(incident: Incident): string | null {
+    const rawInput = incident.raw_input || "";
+    if (!rawInput.startsWith("{")) return null;
+    try {
+        const parsed = JSON.parse(rawInput);
+        const summary =
+            parsed?.user_submission?.summary_en ||
+            parsed?.user_submission?.summary_original ||
+            parsed?.user_submission?.original_text;
+        if (typeof summary === "string" && summary.trim()) {
+            return summary.trim();
+        }
+    } catch {
+        return null;
+    }
+    return null;
+}
+
 // Helper to format data packet display based on incident type
 const getDataPacketDisplay = (incident: Incident): { label: string; content: string; isFile: boolean } => {
+    const userPreview = getUserSubmissionPreview(incident);
+    if (userPreview) {
+        const truncated = userPreview.length > 80 ? `${userPreview.slice(0, 80).trim()}...` : userPreview;
+        return { label: "CITIZEN REPORT", content: truncated, isFile: false };
+    }
+
     const rawInput = incident.raw_input || "";
 
     // Check if it's a file path (contains common file extensions or starts with /)
@@ -300,6 +333,14 @@ export function SignalFeed({ className }: { className?: string }) {
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-mono text-zinc-500">LIVE FEED</span>
+                    <span className="inline-flex items-center gap-1 text-[9px] font-mono text-cyan-400/90">
+                        <span className="w-2 h-2 rounded-full bg-cyan-500" />
+                        Intel
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[9px] font-mono text-violet-300/90">
+                        <span className="w-2 h-2 rounded-full bg-violet-500" />
+                        Citizen
+                    </span>
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 </div>
             </div>
@@ -324,7 +365,8 @@ export function SignalFeed({ className }: { className?: string }) {
                     // Render a single incident card
                     const renderCard = (incident: Incident) => {
                         const isExpanded = expandedId === incident.id;
-                        const styles = getPriorityStyles(incident.priority);
+                        const isCitizenReport = isUserSubmittedIncident(incident);
+                        const styles = isCitizenReport ? USER_SUBMITTED_STYLES : getPriorityStyles(incident.priority);
                         const hasLocation = !!(incident.location && typeof incident.location.lat === 'number' && incident.location.lat !== 0);
                         const dataPacket = getDataPacketDisplay(incident);
 
@@ -336,10 +378,11 @@ export function SignalFeed({ className }: { className?: string }) {
                                     "group relative rounded-lg border transition-all duration-300 overflow-hidden",
                                     isExpanded ? "border-white/10 bg-zinc-900/90 shadow-2xl my-2 scale-[1.01]" : `hover:border-white/10 hover:bg-white/[0.02] cursor-pointer ${styles.border} bg-zinc-900/30`,
                                     incident.status === "PENDING" && "opacity-70 cursor-wait",
-                                    incident.status === "ANALYZING" && "ring-1 ring-cyan-500/30"
+                                    incident.status === "ANALYZING" && "ring-1 ring-cyan-500/30",
+                                    isCitizenReport && !isExpanded && "ring-1 ring-violet-500/25"
                                 )}
                             >
-                                {/* Priority Indicator Line */}
+                                {/* Source / priority indicator line */}
                                 <div className={cn("absolute left-0 top-0 bottom-0 w-1", styles.indicator)} />
 
                                 {/* Card Content */}
@@ -350,9 +393,10 @@ export function SignalFeed({ className }: { className?: string }) {
                                             {/* Icon Box */}
                                             <div className={cn(
                                                 "w-8 h-8 rounded-md flex shrink-0 items-center justify-center border bg-gradient-to-br from-zinc-800 to-black",
-                                                isExpanded ? "border-white/20 text-white" : "border-white/5 text-zinc-500"
+                                                isExpanded ? "border-white/20 text-white" : "border-white/5 text-zinc-500",
+                                                isCitizenReport && "border-violet-500/40 text-violet-300 bg-violet-950/40"
                                             )}>
-                                                {getTypeIcon(incident.type)}
+                                                {isCitizenReport ? <Users className="w-3.5 h-3.5" /> : getTypeIcon(incident.type)}
                                             </div>
 
                                             {/* Main Info */}
@@ -364,6 +408,11 @@ export function SignalFeed({ className }: { className?: string }) {
                                                     )}>
                                                         {getIncidentDisplayTitle(incident)}
                                                     </span>
+                                                    {isCitizenReport && (
+                                                        <span className="text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-violet-500/40 bg-violet-950/40 text-violet-300">
+                                                            Citizen
+                                                        </span>
+                                                    )}
                                                     {incident.priority && (
                                                         <span className={cn(
                                                             "text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border",

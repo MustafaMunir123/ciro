@@ -4,8 +4,10 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap, MapMouseEvent } from "@vis.gl/react-google-maps";
 import { useSimulationStore } from "@/lib/store";
 import { type Incident } from "@/lib/types";
+import { isUserSubmittedIncident } from "@/lib/incident-source";
 import { AnimatePresence, motion } from "framer-motion";
 import pakistanAreaTopics from "@/seed/pakistan_city_area_topics.json";
+import { cn } from "@/lib/utils";
 
 // Priority color mapping (Hex values)
 const PRIORITY_COLORS = {
@@ -13,7 +15,8 @@ const PRIORITY_COLORS = {
     HIGH: "#f97316",    // Orange 500
     MEDIUM: "#eab308",  // Yellow 500
     LOW: "#22c55e",     // Green 500
-    DEFAULT: "#06b6d4"  // Cyan 500
+    DEFAULT: "#06b6d4",  // Cyan 500
+    CITIZEN: "#a855f7", // Violet 500 — user-submitted reports
 };
 
 const karachiEntry = (pakistanAreaTopics as Array<{ city: string; areas: Array<{ lat: number; lng: number }> }>)
@@ -181,7 +184,10 @@ function MapController({ incidents }: { incidents: Incident[] }) {
 function MarkerContent({ incident }: { incident: Incident }) {
     const isAnalyzing = incident.status === "PENDING";
     const isSignalLost = incident.manual_trace_required;
-    const color = PRIORITY_COLORS[incident.priority as keyof typeof PRIORITY_COLORS] || PRIORITY_COLORS.DEFAULT;
+    const isCitizenReport = isUserSubmittedIncident(incident);
+    const color = isCitizenReport
+        ? PRIORITY_COLORS.CITIZEN
+        : PRIORITY_COLORS[incident.priority as keyof typeof PRIORITY_COLORS] || PRIORITY_COLORS.DEFAULT;
 
     // We enhance brightness here to counteract the parent map filter
     const markerStyle = {
@@ -216,6 +222,8 @@ function MarkerContent({ incident }: { incident: Incident }) {
                     <div className="absolute inset-0 border border-cyan-500/50 rounded-full animate-radar-spin border-dashed"></div>
                     <div className="absolute inset-0 bg-cyan-500/10 rounded-full animate-pulse"></div>
                 </>
+            ) : isCitizenReport ? (
+                <div className="absolute inset-[-8px] border-2 border-violet-400/60 rounded-full animate-pulse" />
             ) : incident.priority === "CRITICAL" ? (
                 <>
                     <div className="absolute inset-[-12px] bg-red-500/20 rounded-full animate-ping-slow"></div>
@@ -225,13 +233,22 @@ function MarkerContent({ incident }: { incident: Incident }) {
 
             {/* Core Dot */}
             <div
-                className="w-3 h-3 rounded-full border border-white/20 shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10 transition-transform duration-300 hover:scale-125"
+                className={cn(
+                    "rounded-full border border-white/20 shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10 transition-transform duration-300 hover:scale-125",
+                    isCitizenReport ? "w-3.5 h-3.5" : "w-3 h-3",
+                )}
                 style={{ backgroundColor: color, boxShadow: `0 0 12px ${color}` }}
             />
 
-            {/* Label (Optional - small ID) */}
-            <span className="absolute -bottom-5 text-[8px] font-mono font-bold text-white/70 bg-black/60 px-1 rounded backdrop-blur-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                {incident.id}
+            <span
+                className={cn(
+                    "absolute -bottom-5 text-[8px] font-mono font-bold px-1 rounded backdrop-blur-sm whitespace-nowrap",
+                    isCitizenReport
+                        ? "text-violet-200 bg-violet-950/90 border border-violet-500/40 opacity-100"
+                        : "text-white/70 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity",
+                )}
+            >
+                {isCitizenReport ? "CITIZEN" : incident.id}
             </span>
         </div>
     );
@@ -263,14 +280,21 @@ function TacticalMarker({ incident, onSelect, isSelected }: {
                 >
                     <div className="p-1 min-w-[200px] bg-zinc-950 text-white">
                         {/* Header */}
-                        <div className="flex items-center justify-between border-b border-zinc-700/50 pb-2 mb-2">
-                            <span className="font-mono text-xs text-zinc-400">{incident.id}</span>
+                        <div className="flex items-center justify-between border-b border-zinc-700/50 pb-2 mb-2 gap-2">
+                            <span className="font-mono text-xs text-zinc-400 truncate">{incident.id}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                            {isUserSubmittedIncident(incident) && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-violet-500/40 bg-violet-950/50 text-violet-300 uppercase">
+                                    Citizen
+                                </span>
+                            )}
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${incident.priority === "CRITICAL" ? "bg-red-500/10 border-red-500/30 text-red-500" :
                                 incident.priority === "HIGH" ? "bg-orange-500/10 border-orange-500/30 text-orange-500" :
                                     "bg-zinc-800 border-zinc-700 text-zinc-400"
                                 }`}>
                                 {incident.priority || "UNCATEGORIZED"}
                             </span>
+                            </div>
                         </div>
 
                         {/* Address / Location Target */}
