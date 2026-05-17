@@ -43,6 +43,13 @@ const DEFAULT_LIMIT = 10;
 const NEWS_TOP_RESULTS_LIMIT = 3;
 const DEFAULT_LANGUAGE = "en";
 const NEWS_API_TLS_INSECURE_FALLBACK = process.env.NEWS_API_TLS_INSECURE_FALLBACK !== "false";
+const SOCIAL_MEDIA_RESOURCE_TIMEOUT_MS = 15_000;
+const SOCIAL_MEDIA_RESOURCE_SOURCES = [
+    { name: "twitter", endpoint: "/v1/twitter/posts" },
+    { name: "reddit", endpoint: "/v1/reddit/posts" },
+    { name: "facebook", endpoint: "/v1/facebook/posts" },
+    { name: "googleNews", endpoint: "/v1/news/articles" },
+] as const;
 
 async function fetchWithInsecureTls(url: string): Promise<Response> {
     const https = await import("https");
@@ -205,6 +212,47 @@ async function searchNewsApi(input: DisasterIntelQuery): Promise<DisasterIntelRe
 }
 
 async function searchSocialApi(input: DisasterIntelQuery): Promise<DisasterIntelRecord[]> {
+    const resourceBase = process.env.SOCIAL_MEDIA_RESOURCE_API_BASE;
+    const resourceApiKey = process.env.SOCIAL_MEDIA_RESOURCE_API_KEY;
+    if (resourceBase && resourceApiKey) {
+        const allRecords: DisasterIntelRecord[] = [];
+        let sourceIndexOffset = 0;
+
+        for (const source of SOCIAL_MEDIA_RESOURCE_SOURCES) {
+            const url = new URL(`${resourceBase.replace(/\/$/, "")}${source.endpoint}`);
+            url.searchParams.set("query", buildSearchText(input));
+            url.searchParams.set("sort_by", "relevance");
+            url.searchParams.set("page", "1");
+            url.searchParams.set("get_sentiment", "true");
+
+            try {
+                const response = await fetch(url.toString(), {
+                    method: "GET",
+                    headers: { "x-api-key": resourceApiKey },
+                    cache: "no-store",
+                    signal: AbortSignal.timeout(SOCIAL_MEDIA_RESOURCE_TIMEOUT_MS),
+                });
+                if (!response.ok) {
+                    continue;
+                }
+                const json = await response.json();
+                const posts = Array.isArray((json as any)?.posts) ? (json as any).posts : [];
+                const mapped = posts.map((item: Record<string, any>, idx: number) =>
+                    mapRecord("SOCIAL_API", item, input, sourceIndexOffset + idx)
+                );
+                allRecords.push(...mapped.map((record) => ({
+                    ...record,
+                    author: record.author || source.name,
+                })));
+                sourceIndexOffset += posts.length;
+            } catch {
+                // Per-source failure is non-fatal; continue remaining sources.
+            }
+        }
+
+        return allRecords;
+    }
+
     const url = process.env.SOCIAL_API_URL;
     const apiKey = process.env.SOCIAL_API_KEY;
     if (!url || !apiKey) return [];

@@ -156,38 +156,52 @@ async function resolveThumbnailPath(body: any, eventId: string): Promise<string 
     return null;
 }
 
-function buildSourceTrail(body: any): string[] | null {
-    const trail = new Set<string>();
-    const pushSource = (value: unknown) => {
-        if (typeof value !== "string") return;
-        const clean = value.trim();
-        if (!clean) return;
-        trail.add(clean);
+function buildSourceTrail(body: any): Array<{ type: "news" | "social" | "weather"; json_dump_response: unknown }> | null {
+    const normalizeEntry = (entry: any) => {
+        const type = String(entry?.type || "").toLowerCase();
+        if (type !== "news" && type !== "social" && type !== "weather") return null;
+        return {
+            type: type as "news" | "social" | "weather",
+            json_dump_response: entry?.json_dump_response ?? null,
+        };
     };
 
     if (Array.isArray(body?.source_trail)) {
-        body.source_trail.forEach(pushSource);
+        const normalized = body.source_trail.map(normalizeEntry).filter(Boolean) as Array<{ type: "news" | "social" | "weather"; json_dump_response: unknown }>;
+        if (normalized.length > 0) return normalized;
     }
 
     const rawInput = body?.raw_input;
-    if (typeof rawInput === "string" && rawInput.startsWith("{")) {
-        try {
-            const parsed = JSON.parse(rawInput);
-            const topics = Array.isArray(parsed?.intel_by_topic) ? parsed.intel_by_topic : [];
-            for (const topicEntry of topics) {
-                const records = Array.isArray(topicEntry?.records) ? topicEntry.records : [];
-                for (const record of records) {
-                    pushSource(record?.source);
-                }
+    if (typeof rawInput !== "string" || !rawInput.startsWith("{")) return null;
+    try {
+        const parsed = JSON.parse(rawInput);
+        const topics = Array.isArray(parsed?.intel_by_topic) ? parsed.intel_by_topic : [];
+        const newsRecords: any[] = [];
+        const socialRecords: any[] = [];
+        for (const topicEntry of topics) {
+            const records = Array.isArray(topicEntry?.records) ? topicEntry.records : [];
+            for (const record of records) {
+                if (record?.source === "NEWS_API") newsRecords.push(record);
+                if (record?.source === "SOCIAL_API") socialRecords.push(record);
             }
-            if (parsed?.weather?.current) trail.add("WEATHER_CURRENT");
-            if (parsed?.weather?.forecast_day1) trail.add("WEATHER_FORECAST");
-        } catch {
-            // Ignore JSON parse issues and continue with explicit fields only.
         }
-    }
 
-    return trail.size > 0 ? Array.from(trail) : null;
+        const entries: Array<{ type: "news" | "social" | "weather"; json_dump_response: unknown }> = [];
+        if (newsRecords.length > 0) entries.push({ type: "news", json_dump_response: newsRecords });
+        if (socialRecords.length > 0) entries.push({ type: "social", json_dump_response: socialRecords });
+        if (parsed?.weather?.current || parsed?.weather?.forecast_day1) {
+            entries.push({
+                type: "weather",
+                json_dump_response: {
+                    current: parsed?.weather?.current ?? null,
+                    forecast_day1: parsed?.weather?.forecast_day1 ?? null,
+                },
+            });
+        }
+        return entries.length > 0 ? entries : null;
+    } catch {
+        return null;
+    }
 }
 
 function parseAreaCoords(body: any): { lat: number | null; lng: number | null } {

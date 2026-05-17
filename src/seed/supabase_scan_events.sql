@@ -12,7 +12,7 @@ create table if not exists public.scan_events (
   lng double precision,
   address text,
   event_tags text[],
-  source_trail text[],
+  source_trail jsonb,
   road_coords jsonb,
   ai_summary text,
   thumbnail text,
@@ -30,7 +30,15 @@ create index if not exists scan_events_scan_datetime_idx on public.scan_events (
 create index if not exists scan_events_news_date_idx on public.scan_events (news_date desc);
 
 alter table public.scan_events add column if not exists event_tags text[];
-alter table public.scan_events add column if not exists source_trail text[];
+alter table public.scan_events add column if not exists source_trail jsonb;
+alter table public.scan_events
+  alter column source_trail type jsonb
+  using (
+    case
+      when source_trail is null then null
+      else to_jsonb(source_trail)
+    end
+  );
 alter table public.scan_events add column if not exists road_coords jsonb;
 alter table public.scan_events add column if not exists ai_summary text;
 alter table public.scan_events add column if not exists thumbnail text;

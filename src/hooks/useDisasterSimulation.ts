@@ -3,7 +3,7 @@ import { useSimulationStore } from "@/lib/store";
 import pakistanAreaTopics from "@/seed/pakistan_city_area_topics.json";
 import { coordinateIncident } from "@/agents/coordinator";
 import { MODELS } from "@/lib/constants";
-import { type Incident } from "@/lib/types";
+import { type Incident, type SourceTrailEntry } from "@/lib/types";
 
 // Worker Pool Configuration
 const MAX_CONCURRENT_WORKERS = 1;
@@ -352,7 +352,6 @@ export function useDisasterSimulation() {
                         },
                     };
 
-                    const sourceTrailSet = new Set<string>();
                     const eventTagSet = new Set<string>();
                     const publishedAtCandidates: number[] = [];
                     const topicText = topicName.toLowerCase();
@@ -379,7 +378,6 @@ export function useDisasterSimulation() {
                     );
                     const eventThumbnail = (topNewsWithThumbnail?.thumbnail || topAnyWithThumbnail?.thumbnail || "").trim() || undefined;
                     topicRecords.forEach((record) => {
-                        if (record.source) sourceTrailSet.add(String(record.source));
                         if (Array.isArray(record.tags)) {
                             record.tags.forEach((tag) => {
                                 if (typeof tag === "string" && tag.trim().length > 0) {
@@ -393,8 +391,30 @@ export function useDisasterSimulation() {
                         }
                     });
 
-                    if (currentWeatherFetched) sourceTrailSet.add("WEATHER_CURRENT");
-                    if (forecastWeatherFetched) sourceTrailSet.add("WEATHER_FORECAST");
+                    const newsRecords = topicRecords.filter((record) => record.source === "NEWS_API");
+                    const socialRecords = topicRecords.filter((record) => record.source === "SOCIAL_API");
+                    const sourceTrailEntries: SourceTrailEntry[] = [];
+                    if (newsRecords.length > 0) {
+                        sourceTrailEntries.push({
+                            type: "news",
+                            json_dump_response: newsRecords,
+                        });
+                    }
+                    if (socialRecords.length > 0) {
+                        sourceTrailEntries.push({
+                            type: "social",
+                            json_dump_response: socialRecords,
+                        });
+                    }
+                    if (currentWeatherFetched || forecastWeatherFetched) {
+                        sourceTrailEntries.push({
+                            type: "weather",
+                            json_dump_response: {
+                                current: currentWeatherSummary,
+                                forecast_day1: forecastWeatherSummary,
+                            },
+                        });
+                    }
                     if (currentWeatherFetched || forecastWeatherFetched) eventTagSet.add("weather");
 
                     const newsDate = publishedAtCandidates.length > 0
@@ -407,7 +427,7 @@ export function useDisasterSimulation() {
                         category: topicName,
                         place: resolvedPlace,
                         event_tags: Array.from(eventTagSet),
-                        source_trail: Array.from(sourceTrailSet),
+                        source_trail: sourceTrailEntries,
                         road_coords: {
                             lat: eventCoords.lat,
                             lng: eventCoords.lng,

@@ -1,5 +1,10 @@
 export type Priority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
+export interface SourceTrailEntry {
+    type: "news" | "social" | "weather";
+    json_dump_response: unknown;
+}
+
 export interface Incident {
     id: string;
     type?: "AUDIO" | "VIDEO" | "TEXT" | "COMMAND" | "IMAGE";
@@ -84,7 +89,7 @@ export interface Incident {
     ai_summary?: string;
     thumbnail?: string;
     news_date?: string;
-    source_trail?: string[];
+    source_trail?: SourceTrailEntry[];
     scan_datetime?: string;
 }
 
