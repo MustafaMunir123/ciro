@@ -35,8 +35,8 @@ export async function fetchNearbyScanEvents(params: {
     const rows = (data || []) as NearbyScanEvent[];
     return rows
         .map((row): ScoredNearbyEvent | null => {
-            const lat = Number(row.lat ?? row.area_lat);
-            const lng = Number(row.lng ?? row.area_lng);
+            const lat = Number(row.area_lat);
+            const lng = Number(row.area_lng);
             if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
             const d = distanceKm(params.lat, params.lng, lat, lng);
             return {
