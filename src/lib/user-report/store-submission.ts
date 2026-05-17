@@ -1,8 +1,56 @@
 import { getSupabaseServiceClient } from "@/lib/supabase";
+import {
+    fetchWithInsecureTls,
+    getSupabaseRestConfig,
+    logSupabaseTlsFallbackOnce,
+    shouldUseSupabaseTlsFallback,
+} from "@/lib/supabase-tls-fallback";
 import type { Incident } from "@/lib/types";
 import type { ParsedUserSubmission, UserSubmissionTopicPayload } from "./types";
 
 const TABLE_NAME = "scan_events";
+
+async function upsertUserScanEventViaSupabaseRest(payload: Record<string, unknown>): Promise<{ event_id: string; updated_at: string }> {
+    const config = getSupabaseRestConfig();
+    if (!config) {
+        throw new Error("Supabase REST config missing");
+    }
+
+    const endpoint = `${config.url}/rest/v1/${TABLE_NAME}?on_conflict=event_id`;
+    const init: RequestInit = {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            apikey: config.key,
+            Authorization: `Bearer ${config.key}`,
+            Prefer: "resolution=merge-duplicates,return=representation",
+        },
+        body: JSON.stringify(payload),
+    };
+
+    let response: Response;
+    try {
+        response = await fetch(endpoint, init);
+    } catch (error: any) {
+        if (shouldUseSupabaseTlsFallback(error)) {
+            logSupabaseTlsFallbackOnce("USER-REPORTS-UPSERT");
+            response = await fetchWithInsecureTls(endpoint, init);
+        } else {
+            throw new Error(error?.message || "Supabase REST upsert failed");
+        }
+    }
+
+    if (!response.ok) {
+        const details = await response.text();
+        throw new Error(`Supabase REST upsert failed (${response.status}): ${details}`);
+    }
+
+    const json = (await response.json()) as Array<{ event_id: string; updated_at: string }>;
+    if (!Array.isArray(json) || json.length === 0) {
+        throw new Error("Supabase REST upsert returned empty response");
+    }
+    return json[0];
+}
 
 function buildEventId(): string {
     const suffix =
@@ -111,6 +159,10 @@ export async function upsertUserScanEvent(
         .single();
 
     if (error) {
+        if (shouldUseSupabaseTlsFallback(error)) {
+            logSupabaseTlsFallbackOnce("USER-REPORTS-UPSERT");
+            return upsertUserScanEventViaSupabaseRest(payload);
+        }
         throw new Error(`Supabase upsert failed: ${error.message}`);
     }
 
