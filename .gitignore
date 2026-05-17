@@ -23,8 +23,6 @@
 # misc
 .DS_Store
 *.pem
-public/event-thumbnails/*
-!public/event-thumbnails/.gitkeep
 
 # debug
 npm-debug.log*
