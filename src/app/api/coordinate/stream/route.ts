@@ -244,8 +244,26 @@ export async function POST(req: NextRequest) {
                 safeEnqueue(encoder.encode(JSON.stringify({ type: "result", data: finalResult }) + "\n"));
                 try { controller.close(); } catch (e) { }
             } catch (error: any) {
-                console.error("[STREAM ERROR]", error);
-                const event = { type: "error", message: error.message || "Unknown internal error" };
+                const status = Number(error?.status || error?.code);
+                const message = String(error?.message || "Unknown internal error");
+                const isQuotaError =
+                    status === 429 ||
+                    message.includes("\"code\":429") ||
+                    message.toUpperCase().includes("RESOURCE_EXHAUSTED") ||
+                    message.toLowerCase().includes("quota");
+
+                if (isQuotaError) {
+                    console.warn("[STREAM WARN] Gemini quota/rate limit reached for this request.");
+                } else {
+                    console.error("[STREAM ERROR]", error);
+                }
+
+                const event = {
+                    type: "error",
+                    message: isQuotaError
+                        ? JSON.stringify({ error: { code: 429, message: "Gemini quota/rate limit reached. Falling back for this cycle." } })
+                        : message,
+                };
                 safeEnqueue(encoder.encode(JSON.stringify(event) + "\n"));
                 try { controller.close(); } catch (e) { }
             }

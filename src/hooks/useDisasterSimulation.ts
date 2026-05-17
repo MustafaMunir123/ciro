@@ -63,6 +63,28 @@ function normalizeTopicDescriptor(topic: string | { topic: string; place?: strin
     };
 }
 
+function buildEarlySummary(input: {
+    topic: string;
+    place: string;
+    area: string;
+    city: string;
+    records: Array<{ source: string; headline: string }>;
+    weather: { condition: string; temp_c: string | number; humidity: string | number };
+}): string {
+    const records = Array.isArray(input.records) ? input.records : [];
+    const topHeadlines = records
+        .slice(0, 2)
+        .map((record) => String(record?.headline || "").trim())
+        .filter(Boolean);
+
+    const weatherLine = `Weather snapshot: ${input.weather.condition}, ${input.weather.temp_c}C, humidity ${input.weather.humidity}%.`;
+    if (topHeadlines.length > 0) {
+        const refs = topHeadlines.map((headline, idx) => `Ref ${idx + 1}: ${headline}`).join(" | ");
+        return `${input.topic} reported near ${input.place} (${input.area}, ${input.city}). ${refs}. ${weatherLine}`.slice(0, 1000);
+    }
+    return `${input.topic} reported near ${input.place} (${input.area}, ${input.city}). No high-confidence live headlines yet. ${weatherLine}`.slice(0, 1000);
+}
+
 export function useDisasterSimulation() {
     const {
         time,
@@ -420,6 +442,21 @@ export function useDisasterSimulation() {
                     const newsDate = publishedAtCandidates.length > 0
                         ? new Date(Math.max(...publishedAtCandidates)).toISOString()
                         : undefined;
+                    const earlySummary = buildEarlySummary({
+                        topic: topicName,
+                        place: resolvedPlace,
+                        area: areaEntry.name,
+                        city: cityEntry.city,
+                        records: topicRecords.map((record) => ({
+                            source: record.source || "TOPIC_FEED",
+                            headline: record.headline || "Untitled",
+                        })),
+                        weather: {
+                            condition: currentWeatherSummary.condition,
+                            temp_c: currentWeatherSummary.temp_c,
+                            humidity: currentWeatherSummary.humidity,
+                        },
+                    });
 
                     events.push({
                         id: `EVT-TOPIC-${buildId(cityEntry.city)}-${buildId(areaEntry.name)}-${buildId(topicName)}-${buildUuidSuffix()}`,
@@ -433,7 +470,7 @@ export function useDisasterSimulation() {
                             lng: eventCoords.lng,
                             source: "GOOGLE_PLACE_TEXT_SEARCH",
                         },
-                        ai_summary: `Topic signal generated for ${topicName} in ${areaEntry.name}, ${cityEntry.city}.`,
+                        ai_summary: earlySummary,
                         thumbnail: eventThumbnail,
                         scan_datetime: nowIso,
                         news_date: newsDate,

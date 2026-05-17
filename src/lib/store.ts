@@ -206,7 +206,6 @@ export const useSimulationStore = create<SimulationState>()(
             // Persist only essential data, not transient UI states
             partialize: (state) => ({
                 time: state.time,
-                isPlaying: state.isPlaying,
                 incidents: state.incidents,
                 logs: state.logs,
                 agentAuditLogs: state.agentAuditLogs,
@@ -214,6 +213,10 @@ export const useSimulationStore = create<SimulationState>()(
                 isMissionComplete: state.isMissionComplete,
                 report: state.report,
             }),
+            onRehydrateStorage: () => (state) => {
+                // Prevent automatic scan restart after page reload/hydration.
+                state?.setIsPlaying(false);
+            },
         }
     )
 );

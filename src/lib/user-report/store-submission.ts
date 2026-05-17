@@ -5,6 +5,7 @@ import {
     logSupabaseTlsFallbackOnce,
     shouldUseSupabaseTlsFallback,
 } from "@/lib/supabase-tls-fallback";
+import { generateEventSummaryAndPrecautions } from "@/lib/event-ai-enrichment";
 import type { Incident } from "@/lib/types";
 import type { ParsedUserSubmission, UserSubmissionTopicPayload } from "./types";
 
@@ -60,6 +61,32 @@ function buildEventId(): string {
     return `EVT-USER-${suffix}`;
 }
 
+function buildEarlyUserReportSummary(input: {
+    topic: string;
+    place: string;
+    area: string;
+    city: string;
+    summaryEn: string;
+    records: Array<{ source?: string; headline?: string; published_at?: string }>;
+}): string {
+    const base = String(input.summaryEn || "").replace(/\s+/g, " ").trim();
+    const topRefs = (Array.isArray(input.records) ? input.records : [])
+        .slice(0, 2)
+        .map((record) => {
+            const source = String(record?.source || "SOURCE").trim();
+            const headline = String(record?.headline || "").replace(/\s+/g, " ").trim();
+            if (!headline) return "";
+            return `[${source}] ${headline}`;
+        })
+        .filter(Boolean);
+
+    const header = `${input.topic} reported near ${input.place} (${input.area}, ${input.city}).`;
+    if (topRefs.length > 0) {
+        return `${header} ${base} References: ${topRefs.join(" | ")}`.slice(0, 1000);
+    }
+    return `${header} ${base}`.slice(0, 1000);
+}
+
 export function buildUserIncident(input: {
     eventId: string;
     parsed: ParsedUserSubmission;
@@ -72,6 +99,21 @@ export function buildUserIncident(input: {
 }): Incident {
     const now = new Date().toISOString();
     const address = input.address || `${input.parsed.place}, ${input.parsed.area}, ${input.parsed.city}`;
+    const topicRecords = Array.isArray(input.topicPayload.intel_by_topic?.[0]?.records)
+        ? input.topicPayload.intel_by_topic[0].records
+        : [];
+    const earlySummary = buildEarlyUserReportSummary({
+        topic: input.parsed.topic,
+        place: input.parsed.place,
+        area: input.parsed.area,
+        city: input.parsed.city,
+        summaryEn: input.parsed.summary_en,
+        records: topicRecords.map((record: any) => ({
+            source: record?.source,
+            headline: record?.headline,
+            published_at: record?.published_at,
+        })),
+    });
 
     return {
         id: input.eventId,
@@ -89,7 +131,7 @@ export function buildUserIncident(input: {
         place: input.parsed.place,
         category: input.parsed.topic,
         mission_context: input.parsed.summary_en,
-        ai_summary: input.parsed.summary_en,
+        ai_summary: earlySummary,
         event_tags: input.parsed.event_tags,
         source_trail: (input.topicPayload.source_trail || []).map((entry: any) =>
             typeof entry === "string"
@@ -126,6 +168,16 @@ export async function upsertUserScanEvent(
         }
     }
 
+    const enrichment = await generateEventSummaryAndPrecautions({
+        ai_summary: incident.ai_summary || incident.mission_context || null,
+        category: incident.category || null,
+        city,
+        area,
+        event_tags: incident.event_tags || [],
+        mission_context: incident.mission_context || null,
+        raw_input: incident.raw_input || null,
+    });
+
     const payload = {
         event_id: incident.id,
         type: incident.type || "TEXT",
@@ -142,7 +194,8 @@ export async function upsertUserScanEvent(
         event_tags: incident.event_tags || [],
         source_trail: incident.source_trail || [{ type: "social", json_dump_response: { source: "USER_SUBMITTED" } }],
         road_coords: incident.road_coords || null,
-        ai_summary: incident.ai_summary || incident.mission_context || null,
+        ai_summary: enrichment.ai_summary,
+        precautions: enrichment.precautions,
         thumbnail: incident.thumbnail || null,
         scan_datetime: incident.scan_datetime || incident.timestamp,
         news_date: null,

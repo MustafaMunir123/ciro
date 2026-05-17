@@ -15,6 +15,7 @@ create table if not exists public.scan_events (
   source_trail jsonb,
   road_coords jsonb,
   ai_summary text,
+  precautions text[],
   thumbnail text,
   scan_datetime timestamptz,
   news_date timestamptz,
@@ -41,6 +42,7 @@ alter table public.scan_events
   );
 alter table public.scan_events add column if not exists road_coords jsonb;
 alter table public.scan_events add column if not exists ai_summary text;
+alter table public.scan_events add column if not exists precautions text[];
 alter table public.scan_events add column if not exists thumbnail text;
 alter table public.scan_events add column if not exists scan_datetime timestamptz;
 alter table public.scan_events add column if not exists news_date timestamptz;

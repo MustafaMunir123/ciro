@@ -150,6 +150,7 @@ export default function ResponderView() {
               category: row?.category ?? undefined,
               mission_context: row?.mission_context ?? undefined,
               ai_summary: row?.ai_summary ?? undefined,
+              precautions: row?.precautions ?? undefined,
               event_tags: row?.event_tags ?? undefined,
               source_trail: row?.source_trail ?? undefined,
               road_coords: row?.road_coords ?? undefined,

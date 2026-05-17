@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 import { persistRemoteImageToLocalPath } from "@/lib/local-image-store";
+import { generateEventSummaryAndPrecautions } from "@/lib/event-ai-enrichment";
 
 export const runtime = "nodejs";
 
@@ -491,6 +492,7 @@ function toCompactEvent(row: any) {
         source_trail: row?.source_trail ?? null,
         road_coords: row?.road_coords ?? null,
         ai_summary: row?.ai_summary ?? null,
+        precautions: row?.precautions ?? null,
         thumbnail: row?.thumbnail ?? null,
         scan_datetime: row?.scan_datetime ?? null,
         news_date: row?.news_date ?? null,
@@ -598,6 +600,16 @@ export async function POST(req: NextRequest) {
         const location = body?.location || {};
         const { city, area } = parseCityArea(location?.address);
         const areaCoords = parseAreaCoords(body);
+        const eventTags = buildTagSet(body);
+        const enrichment = await generateEventSummaryAndPrecautions({
+            ai_summary: buildAiSummary(body),
+            category: body?.category || null,
+            city,
+            area,
+            event_tags: eventTags,
+            mission_context: body?.mission_context || null,
+            raw_input: body?.raw_input || null,
+        });
 
         const payload = {
             event_id: id,
@@ -612,10 +624,11 @@ export async function POST(req: NextRequest) {
             lat: typeof location?.lat === "number" ? location.lat : null,
             lng: typeof location?.lng === "number" ? location.lng : null,
             address: location?.address || null,
-            event_tags: buildTagSet(body),
+            event_tags: eventTags,
             source_trail: buildSourceTrail(body),
             road_coords: body?.road_coords || null,
-            ai_summary: buildAiSummary(body),
+            ai_summary: enrichment.ai_summary,
+            precautions: enrichment.precautions,
             thumbnail: thumbnailPath,
             scan_datetime: body?.timestamp || new Date().toISOString(),
             news_date: body?.news_date || extractNewsDate(body?.raw_input),
