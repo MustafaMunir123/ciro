@@ -20,7 +20,7 @@ create table if not exists public.scan_events (
   news_date timestamptz,
   raw_input text,
   mission_context text,
-  payload jsonb not null,
+  is_user_submitted boolean not null default false,
   updated_at timestamptz not null default now()
 );
 
@@ -46,7 +46,12 @@ alter table public.scan_events add column if not exists scan_datetime timestampt
 alter table public.scan_events add column if not exists news_date timestamptz;
 alter table public.scan_events add column if not exists area_lat double precision;
 alter table public.scan_events add column if not exists area_lng double precision;
+alter table public.scan_events alter column priority set default 'LOW';
+update public.scan_events
+set priority = 'LOW'
+where priority is null or btrim(priority) = '';
 alter table public.scan_events add column if not exists is_user_submitted boolean not null default false;
+alter table public.scan_events drop column if exists payload;
 
 create index if not exists scan_events_lat_lng_idx on public.scan_events (lat, lng)
   where lat is not null and lng is not null;
@@ -67,11 +72,6 @@ with legacy_ids as (
 update public.scan_events as se
 set
   event_id = legacy_ids.new_event_id,
-  payload = case
-    when jsonb_typeof(se.payload) = 'object'
-      then jsonb_set(se.payload, '{id}', to_jsonb(legacy_ids.new_event_id), true)
-    else se.payload
-  end,
   updated_at = now()
 from legacy_ids
 where se.event_id = legacy_ids.old_event_id;

@@ -1,4 +1,5 @@
 import type { DisasterIntelResponse } from "@/lib/data-fetching-layer";
+import type { SourceTrailEntry } from "@/lib/types";
 
 export type ReportLanguage = "en" | "ur" | "mixed";
 
@@ -47,7 +48,7 @@ export interface UserSubmissionTopicPayload {
     };
     intel_by_topic: UserTopicIntelEntry[];
     event_tags: string[];
-    source_trail: string[];
+    source_trail: SourceTrailEntry[];
 }
 
 export interface DedupeResult {

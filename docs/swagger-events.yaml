@@ -74,7 +74,7 @@ paths:
             example: EVT-TOPIC-KARACHI-MALIR-KORANGI-CAUSEWAY-CLOSURE-AFTER-MALIR-RIVER-SURGE-SEP-2025-353C74D8-6B78-4526-9A0E-837A20FA6505
         - in: query
           name: view
-          description: Response shape; `compact` by default, `full` includes bulky payload fields.
+          description: Response shape; `compact` by default, `full` includes complete event rows.
           required: false
           schema:
             type: string

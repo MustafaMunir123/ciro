@@ -44,6 +44,7 @@ const NEWS_TOP_RESULTS_LIMIT = 3;
 const DEFAULT_LANGUAGE = "en";
 const NEWS_API_TLS_INSECURE_FALLBACK = process.env.NEWS_API_TLS_INSECURE_FALLBACK !== "false";
 const SOCIAL_MEDIA_RESOURCE_TIMEOUT_MS = 15_000;
+const PAGE_IMAGE_FETCH_TIMEOUT_MS = 10_000;
 const SOCIAL_MEDIA_RESOURCE_SOURCES = [
     { name: "twitter", endpoint: "/v1/twitter/posts" },
     { name: "reddit", endpoint: "/v1/reddit/posts" },
@@ -70,6 +71,132 @@ async function fetchWithInsecureTls(url: string): Promise<Response> {
         req.on("error", reject);
         req.end();
     });
+}
+
+function getErrorCode(error: any): string | undefined {
+    return error?.code || error?.cause?.code;
+}
+
+function extractMetaImageFromHtml(html: string): string | null {
+    const patterns = [
+        /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["'][^>]*>/i,
+        /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["'][^>]*>/i,
+    ];
+
+    for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match?.[1]) {
+            return match[1].trim();
+        }
+    }
+
+    return null;
+}
+
+function resolveUrl(candidate: string, baseUrl: string): string | undefined {
+    try {
+        return new URL(candidate, baseUrl).toString();
+    } catch {
+        return undefined;
+    }
+}
+
+async function fetchPageImage(url: string): Promise<string | undefined> {
+    if (!url) return undefined;
+
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            method: "GET",
+            cache: "no-store",
+            signal: AbortSignal.timeout(PAGE_IMAGE_FETCH_TIMEOUT_MS),
+            headers: {
+                "user-agent": "Mozilla/5.0 (compatible; CIRO/1.0)",
+                "accept-language": "en-US,en;q=0.8",
+            },
+        });
+    } catch (error: any) {
+        if (NEWS_API_TLS_INSECURE_FALLBACK && getErrorCode(error) === "UNABLE_TO_GET_ISSUER_CERT_LOCALLY") {
+            response = await fetchWithInsecureTls(url);
+        } else {
+            return undefined;
+        }
+    }
+
+    if (!response.ok) return undefined;
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+
+    if (contentType.startsWith("image/")) {
+        return url;
+    }
+    if (!contentType.includes("text/html")) {
+        return undefined;
+    }
+
+    const html = await response.text();
+    const metaImage = extractMetaImageFromHtml(html);
+    if (!metaImage) return undefined;
+
+    return resolveUrl(metaImage, url);
+}
+
+function looksLikeImageUrl(value: unknown): value is string {
+    if (typeof value !== "string") return false;
+    const candidate = value.trim().toLowerCase();
+    if (!candidate.startsWith("http")) return false;
+    return [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".heic"].some((ext) => candidate.includes(ext))
+        || candidate.includes("image")
+        || candidate.includes("thumb");
+}
+
+function readThumbnailFromUnknown(value: unknown): string | undefined {
+    if (!value) return undefined;
+    if (looksLikeImageUrl(value)) return String(value).trim();
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const found = readThumbnailFromUnknown(item);
+            if (found) return found;
+        }
+        return undefined;
+    }
+
+    if (typeof value !== "object") return undefined;
+    const record = value as Record<string, unknown>;
+
+    const directKeys = [
+        "thumbnail",
+        "thumbnail_url",
+        "image",
+        "image_url",
+        "photo",
+        "src",
+        "url",
+        "original",
+    ];
+    for (const key of directKeys) {
+        const found = readThumbnailFromUnknown(record[key]);
+        if (found) return found;
+    }
+
+    const nestedKeys = [
+        "images",
+        "image_set",
+        "media",
+        "media_content",
+        "content",
+        "pagemap",
+        "cse_image",
+        "thumbnail_data",
+    ];
+    for (const key of nestedKeys) {
+        const found = readThumbnailFromUnknown(record[key]);
+        if (found) return found;
+    }
+
+    return undefined;
 }
 
 function buildSearchText(input: DisasterIntelQuery): string {
@@ -150,7 +277,7 @@ function mapRecord(
     const url = readString(item, ["url", "link", "post_url", "permalink"], "");
     const author = readString(item, ["author", "source", "username", "user"], "");
     const publishedAt = readString(item, ["published_at", "publishedAt", "created_at", "date", "timestamp"], "");
-    const thumbnail = readString(item, ["thumbnail", "thumbnail_url", "image", "image_url", "photo"], "");
+    const thumbnail = readThumbnailFromUnknown(item) || readString(item, ["thumbnail", "thumbnail_url", "image", "image_url", "photo"], "");
     const tags = readArray(item, ["tags", "hashtags", "keywords"]);
 
     return {
@@ -168,6 +295,28 @@ function mapRecord(
         tags,
         raw: item,
     };
+}
+
+async function enrichMissingNewsThumbnails(records: DisasterIntelRecord[]): Promise<DisasterIntelRecord[]> {
+    const enriched: DisasterIntelRecord[] = [];
+    let foundOne = false;
+
+    for (const record of records) {
+        if (record.thumbnail || !record.url || foundOne) {
+            enriched.push(record);
+            continue;
+        }
+
+        const fetchedThumbnail = await fetchPageImage(record.url);
+        if (fetchedThumbnail) {
+            foundOne = true;
+            enriched.push({ ...record, thumbnail: fetchedThumbnail });
+        } else {
+            enriched.push(record);
+        }
+    }
+
+    return enriched;
 }
 
 async function searchNewsApi(input: DisasterIntelQuery): Promise<DisasterIntelRecord[]> {
@@ -208,7 +357,8 @@ async function searchNewsApi(input: DisasterIntelQuery): Promise<DisasterIntelRe
     }
     const json = await response.json();
     const items = normalizeList(json).slice(0, NEWS_TOP_RESULTS_LIMIT);
-    return items.map((item, idx) => mapRecord("NEWS_API", item, input, idx));
+    const mapped = items.map((item, idx) => mapRecord("NEWS_API", item, input, idx));
+    return enrichMissingNewsThumbnails(mapped);
 }
 
 async function searchSocialApi(input: DisasterIntelQuery): Promise<DisasterIntelRecord[]> {

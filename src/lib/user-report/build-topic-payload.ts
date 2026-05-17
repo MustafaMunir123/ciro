@@ -1,5 +1,6 @@
 import type { DisasterIntelResponse } from "@/lib/data-fetching-layer";
 import type { ParsedUserSubmission, UserSubmissionTopicPayload, UserTopicIntelEntry } from "./types";
+import type { SourceTrailEntry } from "@/lib/types";
 
 export function buildTopicPayload(input: {
     parsed: ParsedUserSubmission;
@@ -27,9 +28,16 @@ export function buildTopicPayload(input: {
         })),
     };
 
-    const sourceTrail = new Set<string>(["USER_SUBMITTED"]);
-    for (const record of intelEntry.records) {
-        if (record.source) sourceTrail.add(record.source);
+    const newsRecords = intelEntry.records.filter((record) => record.source === "NEWS_API");
+    const socialRecords = intelEntry.records.filter((record) => record.source === "SOCIAL_API");
+    const sourceTrail: SourceTrailEntry[] = [
+        { type: "social", json_dump_response: { source: "USER_SUBMITTED" } },
+    ];
+    if (newsRecords.length > 0) {
+        sourceTrail.push({ type: "news", json_dump_response: newsRecords });
+    }
+    if (socialRecords.length > 0) {
+        sourceTrail.push({ type: "social", json_dump_response: socialRecords });
     }
 
     return {
@@ -51,6 +59,6 @@ export function buildTopicPayload(input: {
         },
         intel_by_topic: [intelEntry],
         event_tags: parsed.event_tags,
-        source_trail: Array.from(sourceTrail),
+        source_trail: sourceTrail,
     };
 }

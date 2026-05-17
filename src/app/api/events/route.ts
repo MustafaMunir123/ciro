@@ -157,12 +157,66 @@ async function resolveThumbnailPath(body: any, eventId: string): Promise<string 
 }
 
 function buildSourceTrail(body: any): Array<{ type: "news" | "social" | "weather"; json_dump_response: unknown }> | null {
-    const normalizeEntry = (entry: any) => {
-        const type = String(entry?.type || "").toLowerCase();
+    const parseJsonLike = (value: unknown): unknown => {
+        if (typeof value !== "string") return value;
+        const clean = value.trim();
+        if (!(clean.startsWith("{") || clean.startsWith("["))) return value;
+        try {
+            return JSON.parse(clean);
+        } catch {
+            return value;
+        }
+    };
+
+    const inferTypeFromDump = (dump: unknown): "news" | "social" | "weather" | null => {
+        if (Array.isArray(dump)) {
+            const sources = dump
+                .map((item) => String((item as any)?.source || "").toUpperCase())
+                .filter(Boolean);
+            if (sources.some((source) => source === "SOCIAL_API")) return "social";
+            if (sources.some((source) => source === "NEWS_API")) return "news";
+            return null;
+        }
+        if (dump && typeof dump === "object") {
+            const obj = dump as Record<string, unknown>;
+            if ("current" in obj || "forecast_day1" in obj) return "weather";
+            const source = String((obj as any)?.source || "").toUpperCase();
+            if (source === "SOCIAL_API") return "social";
+            if (source === "NEWS_API") return "news";
+            return null;
+        }
+        const text = String(dump || "").toUpperCase();
+        if (text.includes("WEATHER")) return "weather";
+        if (text.includes("SOCIAL")) return "social";
+        if (text.includes("NEWS")) return "news";
+        return null;
+    };
+
+    const normalizeEntry = (rawEntry: unknown) => {
+        let entry: any = parseJsonLike(rawEntry);
+        let type = String(entry?.type || "").toLowerCase();
+        let dump = parseJsonLike(entry?.json_dump_response);
+
+        // Legacy bad shape: json_dump_response itself contains {"type","json_dump_response"} as string/object.
+        for (let i = 0; i < 3; i += 1) {
+            if (!dump || typeof dump !== "object" || Array.isArray(dump)) break;
+            const nestedType = String((dump as any)?.type || "").toLowerCase();
+            const nestedDump = (dump as any)?.json_dump_response;
+            if (!nestedDump) break;
+            if ((type !== "news" && type !== "social" && type !== "weather") && (nestedType === "news" || nestedType === "social" || nestedType === "weather")) {
+                type = nestedType;
+            }
+            dump = parseJsonLike(nestedDump);
+        }
+
+        if (type !== "news" && type !== "social" && type !== "weather") {
+            type = inferTypeFromDump(dump) || inferTypeFromDump(entry) || "";
+        }
         if (type !== "news" && type !== "social" && type !== "weather") return null;
+
         return {
             type: type as "news" | "social" | "weather",
-            json_dump_response: entry?.json_dump_response ?? null,
+            json_dump_response: dump ?? null,
         };
     };
 
@@ -549,7 +603,7 @@ export async function POST(req: NextRequest) {
             event_id: id,
             type: body?.type || null,
             category: body?.category || null,
-            priority: body?.priority || null,
+            priority: body?.priority || "LOW",
             status: body?.status || null,
             city,
             area,
@@ -568,7 +622,6 @@ export async function POST(req: NextRequest) {
             raw_input: body?.raw_input || null,
             mission_context: body?.mission_context || null,
             is_user_submitted: Boolean(body?.is_user_submitted),
-            payload: body,
             updated_at: new Date().toISOString(),
         };
 

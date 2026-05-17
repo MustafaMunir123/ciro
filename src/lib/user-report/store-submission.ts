@@ -43,7 +43,11 @@ export function buildUserIncident(input: {
         mission_context: input.parsed.summary_en,
         ai_summary: input.parsed.summary_en,
         event_tags: input.parsed.event_tags,
-        source_trail: input.topicPayload.source_trail,
+        source_trail: (input.topicPayload.source_trail || []).map((entry: any) =>
+            typeof entry === "string"
+                ? { type: "social", json_dump_response: { source: entry } }
+                : entry
+        ),
         thumbnail: input.thumbnailPath,
         raw_input: JSON.stringify(input.topicPayload, null, 2),
         road_coords: {
@@ -78,7 +82,7 @@ export async function upsertUserScanEvent(
         event_id: incident.id,
         type: incident.type || "TEXT",
         category: incident.category || null,
-        priority: incident.priority || null,
+        priority: incident.priority || "LOW",
         status: incident.status || "PENDING",
         city,
         area,
@@ -88,7 +92,7 @@ export async function upsertUserScanEvent(
         lng: location.lng,
         address: location.address || null,
         event_tags: incident.event_tags || [],
-        source_trail: incident.source_trail || ["USER_SUBMITTED"],
+        source_trail: incident.source_trail || [{ type: "social", json_dump_response: { source: "USER_SUBMITTED" } }],
         road_coords: incident.road_coords || null,
         ai_summary: incident.ai_summary || incident.mission_context || null,
         thumbnail: incident.thumbnail || null,
@@ -97,7 +101,6 @@ export async function upsertUserScanEvent(
         raw_input: incident.raw_input || null,
         mission_context: incident.mission_context || null,
         is_user_submitted: true,
-        payload: incident,
         updated_at: new Date().toISOString(),
     };
 

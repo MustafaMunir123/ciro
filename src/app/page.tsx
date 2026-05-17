@@ -138,31 +138,39 @@ export default function ResponderView() {
         const rows = Array.isArray(json?.events) ? json.events : [];
         const mapped = rows
           .map((row: any) => {
-            const payload = row?.payload && typeof row.payload === "object" ? row.payload : {};
-            const id = row?.event_id || payload?.id;
+            const id = row?.event_id;
             if (!id) return null;
             return {
-              ...payload,
               id,
-              raw_input: payload?.raw_input ?? row?.raw_input ?? "",
-              timestamp: payload?.timestamp ?? row?.scan_datetime ?? row?.updated_at ?? new Date().toISOString(),
-              status: payload?.status ?? row?.status ?? "PENDING",
+              raw_input: row?.raw_input ?? "",
+              timestamp: row?.scan_datetime ?? row?.updated_at ?? new Date().toISOString(),
+              status: row?.status ?? "PENDING",
+              type: row?.type ?? undefined,
+              priority: row?.priority ?? undefined,
+              category: row?.category ?? undefined,
+              mission_context: row?.mission_context ?? undefined,
+              ai_summary: row?.ai_summary ?? undefined,
+              event_tags: row?.event_tags ?? undefined,
+              source_trail: row?.source_trail ?? undefined,
+              road_coords: row?.road_coords ?? undefined,
+              thumbnail: row?.thumbnail ?? undefined,
+              news_date: row?.news_date ?? undefined,
+              scan_datetime: row?.scan_datetime ?? undefined,
               location: {
-                lat: payload?.location?.lat ?? row?.lat ?? 0,
-                lng: payload?.location?.lng ?? row?.lng ?? 0,
-                address: payload?.location?.address ?? row?.address ?? undefined,
+                lat: row?.lat ?? 0,
+                lng: row?.lng ?? 0,
+                address: row?.address ?? undefined,
               },
-              area_location: payload?.area_location ?? (
+              area_location: (
                 typeof row?.area_lat === "number" && typeof row?.area_lng === "number"
                   ? { lat: row.area_lat, lng: row.area_lng, address: undefined }
                   : undefined
               ),
               is_user_submitted: resolveIsUserSubmittedFromRow({
                 is_user_submitted: row?.is_user_submitted,
-                event_id: row?.event_id || payload?.id,
-                source_trail: row?.source_trail ?? payload?.source_trail,
-                raw_input: row?.raw_input ?? payload?.raw_input,
-                payload,
+                event_id: row?.event_id,
+                source_trail: row?.source_trail,
+                raw_input: row?.raw_input,
               }),
             };
           })

@@ -4,7 +4,7 @@ import path from "path";
 
 const THUMBNAIL_DIR_NAME = "event-thumbnails";
 const THUMBNAIL_PUBLIC_DIR = path.join(process.cwd(), "public", THUMBNAIL_DIR_NAME);
-const THUMBNAIL_TLS_INSECURE_FALLBACK = process.env.THUMBNAIL_TLS_INSECURE_FALLBACK === "true";
+const THUMBNAIL_TLS_INSECURE_FALLBACK = process.env.THUMBNAIL_TLS_INSECURE_FALLBACK !== "false";
 
 let thumbnailDirReady: Promise<void> | null = null;
 

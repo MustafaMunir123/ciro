@@ -24,17 +24,13 @@ export function resolveIsUserSubmittedFromRow(row: {
     event_id?: string | null;
     source_trail?: string[] | null;
     raw_input?: string | null;
-    payload?: { is_user_submitted?: boolean; id?: string; source_trail?: string[]; raw_input?: string; user_submission?: unknown } | null;
 }): boolean {
     if (row.is_user_submitted === true) return true;
-    const payload = row.payload && typeof row.payload === "object" ? row.payload : null;
-    if (payload?.is_user_submitted === true) return true;
-    if (payload?.user_submission) return true;
-    const id = row.event_id || payload?.id || "";
+    const id = row.event_id || "";
     if (String(id).startsWith("EVT-USER-")) return true;
-    const trail = payload?.source_trail ?? row.source_trail;
+    const trail = row.source_trail;
     if (Array.isArray(trail) && trail.includes("USER_SUBMITTED")) return true;
-    const raw = payload?.raw_input ?? row.raw_input ?? "";
+    const raw = row.raw_input ?? "";
     if (typeof raw === "string" && raw.startsWith("{")) {
         try {
             if (JSON.parse(raw)?.user_submission) return true;
