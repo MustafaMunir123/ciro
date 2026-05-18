@@ -21,6 +21,8 @@ export interface Incident {
         address?: string;
     };
     place?: string;
+    city?: string;
+    area?: string;
     status: "PENDING" | "ANALYZING" | "TRIAGED" | "RESOLVED";
     // Enriched Fields from Agents
     priority?: Priority;

@@ -195,6 +195,15 @@ function humanizeSlug(value: string): string {
 }
 
 function extractCityArea(incident: Incident): { city: string; area: string } {
+    const cityFromRow = typeof incident.city === "string" ? incident.city.trim() : "";
+    const areaFromRow = typeof incident.area === "string" ? incident.area.trim() : "";
+    if (cityFromRow || areaFromRow) {
+        return {
+            city: cityFromRow || "Unknown City",
+            area: areaFromRow || "Unknown Area",
+        };
+    }
+
     const rawInput = incident.raw_input || "";
     if (rawInput.startsWith("{")) {
         try {

@@ -6,10 +6,10 @@ import { ReasoningLog } from "@/components/ReasoningLog";
 
 import { useSimulationStore } from "@/lib/store";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, FileText, Download, Trash2 } from "lucide-react";
+import { AlertCircle, Trash2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MissionReportModal } from "@/components/MissionReportModal";
 import { resolveIsUserSubmittedFromRow } from "@/lib/incident-source";
 
@@ -63,6 +63,7 @@ export default function ResponderView() {
     showNotification,
     isMissionComplete,
     logs,
+    addLog,
     setReport,
     report,
     setIsReportOpen,
@@ -71,6 +72,42 @@ export default function ResponderView() {
     setIsMissionComplete,
     hydrateIncidents
   } = useSimulationStore();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isMockUploadRunning, setIsMockUploadRunning] = useState(false);
+
+  const runMockUploadFlow = (fileName: string) => {
+    if (isMockUploadRunning) return;
+    setIsMockUploadRunning(true);
+    showNotification("Raw File data intake started", "info");
+
+    const queueLog = (delayMs: number, message: string) => {
+      window.setTimeout(() => {
+        const runtime = useSimulationStore.getState().time;
+        addLog(`[${runtime}s] ${message}`);
+      }, delayMs);
+    };
+
+    queueLog(0, `[Raw File data] FILE_INGEST_INIT | file=${fileName}`);
+    queueLog(700, "[Raw File data] AGENTS_BOOTSTRAP | coordinator=ready triage=ready logistics=ready reporter=ready");
+    queueLog(1400, "[Raw File data] SOCIAL_SIGNAL_READY | records=5 sentiment_clusters=3");
+    queueLog(2100, "[Raw File data] WEATHER_SIGNAL_READY | current=ingested forecast=ingested");
+    queueLog(2800, "[Raw File data] BULK_PARSE_COMPLETE | extracted_topics=4 geo_candidates=6");
+    queueLog(3500, "[Raw File data] CROSS_SOURCE_FUSION_COMPLETE | sources=news,social,weather,file");
+    queueLog(4300, "[Raw File data] DEMO_ONLY_NO_FILE_PROCESSING | raw_file_bypass=true");
+    queueLog(5000, "[Raw File data] PIPELINE_COMPLETE | status=ok");
+
+    window.setTimeout(() => {
+      setIsMockUploadRunning(false);
+      showNotification("Raw File data processing completed", "success");
+    }, 5200);
+  };
+
+  const handleMockFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+    runMockUploadFlow(selectedFile.name);
+    event.target.value = "";
+  };
 
   const handleGenerateReport = async () => {
     if (isGeneratingReport) return;
@@ -134,6 +171,8 @@ export default function ResponderView() {
               type: row?.type ?? undefined,
               priority: row?.priority ?? undefined,
               category: row?.category ?? undefined,
+              city: row?.city ?? undefined,
+              area: row?.area ?? undefined,
               mission_context: row?.mission_context ?? undefined,
               ai_summary: row?.ai_summary ?? undefined,
               precautions: row?.precautions ?? undefined,
@@ -236,6 +275,29 @@ export default function ResponderView() {
           </div>
 
           <div className="hidden md:flex items-center gap-6">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleMockFileUpload}
+            />
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isMockUploadRunning}
+              className={cn(
+                "group relative px-3 py-2 rounded-lg font-mono text-xs font-bold tracking-widest transition-all duration-500 overflow-hidden border flex items-center gap-2",
+                isMockUploadRunning
+                  ? "border-cyan-500/40 text-cyan-300 bg-cyan-500/10 cursor-wait"
+                  : "border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 hover:border-cyan-400/60"
+              )}
+              title="SIMULATE BULK FILE INTEL"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline text-[9px]">
+                {isMockUploadRunning ? "PROCESSING..." : "UPLOAD"}
+              </span>
+            </button>
 
             <button
               onClick={() => {
