@@ -10,6 +10,18 @@ import type { Incident } from "@/lib/types";
 import type { ParsedUserSubmission, UserSubmissionTopicPayload } from "./types";
 
 const TABLE_NAME = "scan_events";
+const PRIORITY_RANDOM_POOL = ["MEDIUM", "LOW", "HIGH"] as const;
+
+function resolvePriorityWithRandomFallback(inputPriority: unknown, eventId: string): "MEDIUM" | "LOW" | "HIGH" | "CRITICAL" {
+    const clean = String(inputPriority || "").trim().toUpperCase();
+    if (clean === "LOW" || clean === "MEDIUM" || clean === "HIGH" || clean === "CRITICAL") {
+        return clean;
+    }
+    const seed = String(eventId || "")
+        .split("")
+        .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    return PRIORITY_RANDOM_POOL[seed % PRIORITY_RANDOM_POOL.length];
+}
 
 async function upsertUserScanEventViaSupabaseRest(payload: Record<string, unknown>): Promise<{ event_id: string; updated_at: string }> {
     const config = getSupabaseRestConfig();
@@ -182,7 +194,7 @@ export async function upsertUserScanEvent(
         event_id: incident.id,
         type: incident.type || "TEXT",
         category: incident.category || null,
-        priority: incident.priority || "LOW",
+        priority: resolvePriorityWithRandomFallback(incident.priority, incident.id),
         status: incident.status || "PENDING",
         city,
         area,

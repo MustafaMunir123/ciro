@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 
 const MAX_TEXT_LENGTH = 4000;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const GCS_PUBLIC_URL_PREFIX = "https://storage.googleapis.com/curious-signal-488518-t5_cloudbuild/";
 
 function parseCoordinate(value: FormDataEntryValue | null, field: string): number {
     const num = Number(typeof value === "string" ? value.trim() : "");
@@ -97,6 +98,9 @@ export async function POST(req: NextRequest) {
                 eventId,
                 photoExtension,
             );
+            if (!thumbnailPath || !thumbnailPath.startsWith(GCS_PUBLIC_URL_PREFIX)) {
+                throw new Error("User report image upload failed: bucket URL was not returned.");
+            }
         }
 
         const incident = buildUserIncident({

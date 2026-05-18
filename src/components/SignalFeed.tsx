@@ -17,7 +17,6 @@ import {
     Cpu,
     Target
 } from "lucide-react";
-import { CommanderControls } from "./CommanderControls";
 import { isUserSubmittedIncident } from "@/lib/incident-source";
 
 const getPriorityStyles = (p?: string) => {

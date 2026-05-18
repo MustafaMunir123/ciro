@@ -12,16 +12,49 @@
             "place": "Shahrah-e-Bhutto Road, Malir, Karachi"
           },
           {
-            "topic": "Korangi Causeway Closure After Malir River Surge (Sep 2025)",
-            "place": "Korangi Causeway, Karachi"
+            "topic": "M-9 Link Road Rainwater Logging",
+            "place": "M-9 Link Road, Malir, Karachi"
+          }
+        ]
+      },
+      {
+        "name": "Korangi",
+        "lat": 24.8333,
+        "lng": 67.15,
+        "topics": [
+          {
+            "topic": "Korangi Industrial Area Factory Fire",
+            "place": "Korangi Industrial Area, Karachi"
           },
           {
-            "topic": "Malir River Belt Monsoon Evacuation and Service-Road Blockage",
-            "place": "Malir River Bridge Service Road, Karachi"
+            "topic": "Landhi-Korangi Road Protest",
+            "place": "Landhi-Korangi Road, Karachi"
+          }
+        ]
+      },
+      {
+        "name": "Saddar",
+        "lat": 24.8565,
+        "lng": 67.0305,
+        "topics": [
+          {
+            "topic": "Saddar Building Collapse Rescue with Empress Market Diversions",
+            "place": "Empress Market, Saddar, Karachi"
           },
           {
-            "topic": "M-9 Link Road Rainwater Logging Near Malir Halt",
-            "place": "M-9 Link Road, Malir Halt, Karachi"
+            "topic": "Pre-monsoon Electric Infrastructure Fire Near II Chundrigar Connector",
+            "place": "II Chundrigar Road Connector, Karachi"
+          }
+        ]
+      },
+      {
+        "name": "Gulshan-e-Iqbal",
+        "lat": 24.92,
+        "lng": 67.09,
+        "topics": [
+          {
+            "topic": "Gulshan Transformer Blast Triggering Nighttime Traffic Diversions",
+            "place": "Gulshan-e-Iqbal, Karachi"
           }
         ]
       }

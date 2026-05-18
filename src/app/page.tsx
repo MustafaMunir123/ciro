@@ -60,7 +60,6 @@ export default function ResponderView() {
     setIsPlaying,
     incidents,
     notification,
-    setIsMicAuthorized,
     showNotification,
     isMissionComplete,
     logs,
@@ -95,18 +94,6 @@ export default function ResponderView() {
 
   // Initial system checks and warm-up
   useEffect(() => {
-    const checkMic = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setIsMicAuthorized(true);
-        stream.getTracks().forEach(track => track.stop());
-      } catch (err) {
-        console.warn("[COMMANDER] Mic permission denied:", err);
-        setIsMicAuthorized(false);
-        showNotification("Microphone access denied. Voice commands disabled.", "error");
-      }
-    };
-
     const warmUpGemini = async () => {
       const warmupEnabled = process.env.NEXT_PUBLIC_GEMINI_WARMUP_ENABLED === "true";
       if (!warmupEnabled) {
@@ -124,9 +111,8 @@ export default function ResponderView() {
       }
     };
 
-    checkMic();
     warmUpGemini();
-  }, [setIsMicAuthorized, showNotification]);
+  }, [showNotification]);
 
   // Load persisted events from internal API (Supabase-backed) on startup.
   useEffect(() => {

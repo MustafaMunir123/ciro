@@ -9,6 +9,20 @@ const TABLE_NAME = "scan_events";
 const SUPABASE_TLS_INSECURE_FALLBACK = process.env.SUPABASE_TLS_INSECURE_FALLBACK !== "false";
 let hasLoggedSupabaseTlsFallback = false;
 
+const PRIORITY_RANDOM_POOL = ["MEDIUM", "LOW", "HIGH"] as const;
+
+function resolvePriorityWithRandomFallback(inputPriority: unknown, eventId: string): "MEDIUM" | "LOW" | "HIGH" | "CRITICAL" {
+    const clean = String(inputPriority || "").trim().toUpperCase();
+    if (clean === "LOW" || clean === "MEDIUM" || clean === "HIGH" || clean === "CRITICAL") {
+        return clean;
+    }
+    // Stable random-like assignment per event id.
+    const seed = String(eventId || "")
+        .split("")
+        .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    return PRIORITY_RANDOM_POOL[seed % PRIORITY_RANDOM_POOL.length];
+}
+
 function parseCityArea(address?: string | null): { city: string | null; area: string | null } {
     if (!address) return { city: null, area: null };
     const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
@@ -100,11 +114,14 @@ function buildAiSummary(body: any): string | null {
 }
 
 async function resolveThumbnailPath(body: any, eventId: string): Promise<string | null> {
-    const normalizeLocalThumbnailPath = (value: unknown): string | null => {
+    const normalizeStoredThumbnailPath = (value: unknown): string | null => {
         if (typeof value !== "string") return null;
         const clean = value.trim();
         if (!clean) return null;
-        return clean.startsWith("/event-thumbnails/") ? clean : null;
+        if (clean.startsWith("gs://")) return clean;
+        if (clean.startsWith("/event-thumbnails/")) return clean; // legacy local path compatibility
+        if (clean.startsWith("https://storage.googleapis.com/")) return clean;
+        return null;
     };
     const normalizeRemoteThumbnailUrl = (value: unknown): string | null => {
         if (typeof value !== "string") return null;
@@ -114,8 +131,8 @@ async function resolveThumbnailPath(body: any, eventId: string): Promise<string 
         return null;
     };
 
-    const directLocal = normalizeLocalThumbnailPath(body?.thumbnail);
-    if (directLocal) return directLocal;
+    const directStored = normalizeStoredThumbnailPath(body?.thumbnail);
+    if (directStored) return directStored;
     const directRemote = normalizeRemoteThumbnailUrl(body?.thumbnail);
     if (directRemote) {
         const persisted = await persistRemoteImageToLocalPath(directRemote, eventId);
@@ -129,9 +146,9 @@ async function resolveThumbnailPath(body: any, eventId: string): Promise<string 
         const topics = Array.isArray(parsed?.intel_by_topic) ? parsed.intel_by_topic : [];
         for (const topicEntry of topics) {
             const records = Array.isArray(topicEntry?.records) ? topicEntry.records : [];
-            const preferredLocal = records.find((record: any) => record?.source === "NEWS_API" && normalizeLocalThumbnailPath(record?.thumbnail));
-            const preferredLocalThumb = normalizeLocalThumbnailPath(preferredLocal?.thumbnail);
-            if (preferredLocalThumb) return preferredLocalThumb;
+            const preferredStored = records.find((record: any) => record?.source === "NEWS_API" && normalizeStoredThumbnailPath(record?.thumbnail));
+            const preferredStoredThumb = normalizeStoredThumbnailPath(preferredStored?.thumbnail);
+            if (preferredStoredThumb) return preferredStoredThumb;
 
             const preferredRemote = records.find((record: any) => record?.source === "NEWS_API" && normalizeRemoteThumbnailUrl(record?.thumbnail));
             const preferredRemoteThumb = normalizeRemoteThumbnailUrl(preferredRemote?.thumbnail);
@@ -140,9 +157,9 @@ async function resolveThumbnailPath(body: any, eventId: string): Promise<string 
                 if (persisted) return persisted;
             }
 
-            const fallbackLocal = records.find((record: any) => normalizeLocalThumbnailPath(record?.thumbnail));
-            const fallbackLocalThumb = normalizeLocalThumbnailPath(fallbackLocal?.thumbnail);
-            if (fallbackLocalThumb) return fallbackLocalThumb;
+            const fallbackStored = records.find((record: any) => normalizeStoredThumbnailPath(record?.thumbnail));
+            const fallbackStoredThumb = normalizeStoredThumbnailPath(fallbackStored?.thumbnail);
+            if (fallbackStoredThumb) return fallbackStoredThumb;
 
             const fallbackRemote = records.find((record: any) => normalizeRemoteThumbnailUrl(record?.thumbnail));
             const fallbackRemoteThumb = normalizeRemoteThumbnailUrl(fallbackRemote?.thumbnail);
@@ -615,7 +632,7 @@ export async function POST(req: NextRequest) {
             event_id: id,
             type: body?.type || null,
             category: body?.category || null,
-            priority: body?.priority || "LOW",
+            priority: resolvePriorityWithRandomFallback(body?.priority, id),
             status: body?.status || null,
             city,
             area,

@@ -22,8 +22,6 @@ interface SimulationState {
     setFocusedIncidentId: (id: string | null) => void;
     notification: { message: string, type: "error" | "success" | "info" } | null;
     showNotification: (message: string, type?: "error" | "success" | "info") => void;
-    isMicAuthorized: boolean;
-    setIsMicAuthorized: (authorized: boolean) => void;
     report: MissionReport | null;
     setReport: (report: MissionReport | null) => void;
     isMissionComplete: boolean;
@@ -70,7 +68,6 @@ const initialState = {
     isMockMode: false,
     focusedIncidentId: null,
     notification: null,
-    isMicAuthorized: false,
     report: null,
     isMissionComplete: false,
     isReportOpen: false,
@@ -165,8 +162,6 @@ export const useSimulationStore = create<SimulationState>()(
                 setTimeout(() => set({ notification: null }), 5000);
             },
 
-            setIsMicAuthorized: (isMicAuthorized) => set({ isMicAuthorized }),
-
             setReport: (report) => set({ report }),
 
             setIsMissionComplete: (isMissionComplete) => set({ isMissionComplete }),
@@ -203,6 +198,7 @@ export const useSimulationStore = create<SimulationState>()(
         {
             name: "simulation-store", // Storage key
             storage: createJSONStorage(() => localStorage),
+            version: 3,
             // Persist only essential data, not transient UI states
             partialize: (state) => ({
                 time: state.time,
@@ -213,6 +209,10 @@ export const useSimulationStore = create<SimulationState>()(
                 isMissionComplete: state.isMissionComplete,
                 report: state.report,
             }),
+            migrate: (persistedState: any, version) => {
+                // v3: keep incidents cached again, but still do not persist auto-play state.
+                return persistedState;
+            },
             onRehydrateStorage: () => (state) => {
                 // Prevent automatic scan restart after page reload/hydration.
                 state?.setIsPlaying(false);

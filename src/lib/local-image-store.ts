@@ -1,18 +1,33 @@
 import { createHash } from "crypto";
-import { mkdir, access, writeFile } from "fs/promises";
 import path from "path";
+import { Storage } from "@google-cloud/storage";
 
-const THUMBNAIL_DIR_NAME = "event-thumbnails";
-const THUMBNAIL_PUBLIC_DIR = path.join(process.cwd(), "public", THUMBNAIL_DIR_NAME);
 const THUMBNAIL_TLS_INSECURE_FALLBACK = process.env.THUMBNAIL_TLS_INSECURE_FALLBACK !== "false";
+const GCS_BUCKET_NAME = "curious-signal-488518-t5_cloudbuild";
+const GCS_IMAGE_BASE_PATH = "images";
+const GCP_SERVICE_KEY_JSON = process.env.GCP_SERVICE_KEY_JSON;
 
-let thumbnailDirReady: Promise<void> | null = null;
+let storageClient: Storage | null = null;
 
-function ensureThumbnailDir() {
-    if (!thumbnailDirReady) {
-        thumbnailDirReady = mkdir(THUMBNAIL_PUBLIC_DIR, { recursive: true }).then(() => undefined);
+function getStorageClient(): Storage {
+    if (storageClient) return storageClient;
+
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        storageClient = new Storage();
+        return storageClient;
     }
-    return thumbnailDirReady;
+
+    if (GCP_SERVICE_KEY_JSON) {
+        try {
+            const credentials = JSON.parse(GCP_SERVICE_KEY_JSON);
+            storageClient = new Storage({ credentials });
+            return storageClient;
+        } catch (error) {
+            throw new Error("Invalid GCP_SERVICE_KEY_JSON value. Ensure it is valid single-line JSON.");
+        }
+    }
+
+    throw new Error("Missing GCP credentials. Set GCP_SERVICE_KEY_JSON (single-line JSON) or GOOGLE_APPLICATION_CREDENTIALS.");
 }
 
 function getErrorCode(error: any): string | undefined {
@@ -46,14 +61,18 @@ function sanitizeFileBaseName(value: string): string {
     return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-function buildLocalImagePath(sourceUrl: string, contentType?: string | null, preferredBaseName?: string): { absolutePath: string; relativePath: string } {
+function buildGcsPublicUrl(objectName: string): string {
+    return `https://storage.googleapis.com/${GCS_BUCKET_NAME}/${objectName}`;
+}
+
+function buildGcsObjectPath(sourceUrl: string, contentType?: string | null, preferredBaseName?: string): { objectName: string; publicUrl: string } {
     const digest = createHash("sha256").update(sourceUrl).digest("hex").slice(0, 32);
     const baseName = sanitizeFileBaseName(preferredBaseName || "") || digest;
     const extension = getExtFromUrl(sourceUrl) || getExtFromContentType(contentType);
-    const filename = `${baseName}${extension}`;
+    const objectName = `${GCS_IMAGE_BASE_PATH}/${baseName}/${baseName}${extension}`;
     return {
-        absolutePath: path.join(THUMBNAIL_PUBLIC_DIR, filename),
-        relativePath: `/${THUMBNAIL_DIR_NAME}/${filename}`,
+        objectName,
+        publicUrl: buildGcsPublicUrl(objectName),
     };
 }
 
@@ -88,31 +107,28 @@ export async function persistUploadBufferToLocalPath(
     const cleanType = String(contentType || "").toLowerCase();
     if (!cleanType.startsWith("image/")) return undefined;
 
-    await ensureThumbnailDir();
     const digest = createHash("sha256").update(buffer).digest("hex").slice(0, 32);
     const baseName = sanitizeFileBaseName(preferredBaseName || "") || digest;
     const extension = extensionOverride || getExtFromContentType(contentType);
-    const filename = `${baseName}${extension}`;
-    const absolutePath = path.join(THUMBNAIL_PUBLIC_DIR, filename);
-    const relativePath = `/${THUMBNAIL_DIR_NAME}/${filename}`;
+    const objectName = `${GCS_IMAGE_BASE_PATH}/${baseName}/${baseName}${extension}`;
 
-    try {
-        await access(absolutePath);
-        return relativePath;
-    } catch {
-        // write new file
-    }
-
-    await writeFile(absolutePath, buffer);
-    return relativePath;
+    const storage = getStorageClient();
+    const bucket = storage.bucket(GCS_BUCKET_NAME);
+    const file = bucket.file(objectName);
+    await file.save(buffer, {
+        resumable: false,
+        metadata: {
+            contentType,
+            cacheControl: "public, max-age=31536000",
+        },
+    });
+    return buildGcsPublicUrl(objectName);
 }
 
 export async function persistRemoteImageToLocalPath(imageUrl?: string, preferredBaseName?: string): Promise<string | undefined> {
     const cleanUrl = typeof imageUrl === "string" ? imageUrl.trim() : "";
     if (!cleanUrl) return undefined;
-    if (cleanUrl.startsWith(`/${THUMBNAIL_DIR_NAME}/`)) return cleanUrl;
-
-    await ensureThumbnailDir();
+    if (cleanUrl.startsWith("gs://") || cleanUrl.startsWith("https://storage.googleapis.com/")) return cleanUrl;
 
     let response: Response;
     try {
@@ -132,16 +148,18 @@ export async function persistRemoteImageToLocalPath(imageUrl?: string, preferred
         return undefined;
     }
 
-    const { absolutePath, relativePath } = buildLocalImagePath(cleanUrl, contentType, preferredBaseName);
-
-    try {
-        await access(absolutePath);
-        return relativePath;
-    } catch {
-        // File does not exist; continue to write it.
-    }
+    const { objectName, publicUrl } = buildGcsObjectPath(cleanUrl, contentType, preferredBaseName);
 
     const buffer = Buffer.from(await response.arrayBuffer());
-    await writeFile(absolutePath, buffer);
-    return relativePath;
+    const storage = getStorageClient();
+    const bucket = storage.bucket(GCS_BUCKET_NAME);
+    const file = bucket.file(objectName);
+    await file.save(buffer, {
+        resumable: false,
+        metadata: {
+            contentType: contentType || "image/jpeg",
+            cacheControl: "public, max-age=31536000",
+        },
+    });
+    return publicUrl;
 }
