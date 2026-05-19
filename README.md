@@ -36,12 +36,13 @@ A real-time, multi-agent crisis intelligence and response orchestrator for insta
 
 ---
 
-## Antigravity Usage
+## Antigravity Usage/Users/mustafa.munir/Personal/aegis-master/agy.mov
 
-با خبر uses **Antigravity** for orchestrated agentic execution and presentation-driven interaction flow across the pipeline.
 
-Demo video:
-- [Antigravity execution demo](./Screen%20Recording%202026-05-18%20at%209.25.25%E2%80%AFPM.mov)
+https://github.com/user-attachments/assets/d7c05fce-a56c-46b3-a24a-09c2cdeb02a3
+
+
+
 
 ---
 
