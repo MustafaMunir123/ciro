@@ -44,6 +44,9 @@ https://github.com/user-attachments/assets/d7c05fce-a56c-46b3-a24a-09c2cdeb02a3
 
 
 
+Chats and artifacts:
+- [antigravity-chats-and-artifacts](./antigravity-chats-and-artifacts/)
+
 ---
 
 ## Tools / APIs Used

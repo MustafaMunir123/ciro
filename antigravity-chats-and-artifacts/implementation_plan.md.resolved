@@ -1,0 +1,84 @@
+# CIRO: Situation Cockpit Implementation Plan
+
+## Goal Description
+CIRO is a premium cyber-situation cockpit designed to monitor emergency signals, resolve coordinates, allocate logistics units, and render visual map forensics inside situation rooms. This plan details the architectural integrations, the isolated cooperative 4-agent matrix, front-end optimization loops, and the recent code compliance standardizations implemented to achieve perfect lint status and POSIX compatibility.
+
+---
+
+## Proposed Changes
+
+### 1. Unified Project Configurations
+
+#### [MODIFY] [package.json](file:///Users/mustafa.munir/Personal/aegis-master/package.json)
+*   Renamed the project identifier to `"name": "ciro"` to unify the codebase under the CIRO platform.
+*   Preserved all core dependencies (NextJS 16, Google GenAI SDK, Supabase, react-google-maps, Framer Motion, Zustand).
+
+#### [MODIFY] [tsconfig.json](file:///Users/mustafa.munir/Personal/aegis-master/tsconfig.json)
+*   Formatted configurations and reconciled trailing whitespaces to maintain strict single-EOF newline standards.
+
+#### [MODIFY] [components.json](file:///Users/mustafa.munir/Personal/aegis-master/components.json)
+*   Reconciled compiler configuration trails.
+
+---
+
+### 2. Multi-Agent Crisis Pipelines
+
+```mermaid
+graph TD
+    A[Crisis Signal Input] --> B[1. Coordinator Agent]
+    B -->|Transcribe / Landmarks| C[2. Triage Agent]
+    B -->|Direct Deployment| D[3. Logistics Agent]
+    
+    C -->|Asset Requests| D
+    C -->|Grounding Conflict Audit| E[(Persistent Zustand & DB)]
+    D -->|Markdown Dispatch Audit| E
+    
+    E -->|Operator Closes Mission| F[4. Reporter Agent]
+```
+
+*   **1. Coordinator Agent** (Always Active): Located in `src/agents/coordinator.ts`. Inspects incoming distress streams, performs deterministic type audits if headers are absent, and controls dynamic SSE context redirects.
+*   **2. Triage Agent** (Main Analysis Path): Located in `src/agents/triage.ts`. Resolves transcripts, extracts structural landmarks, calculatesspoken-to-GPS Haversine discrepancies ($>500\text{m}$), and activates `requires_logistics`.
+*   **3. Logistics Agent** (Targeted Asset Allocator): Located in `src/agents/logistics.ts`. Dynamically chooses vehicles based on location, estimated travel durations, and constructs markdown audit logs.
+*   **4. Reporter Agent** (Briefing Reporter): Consolidates database records and operator logs to generate comprehensive post-mission modal briefings.
+
+---
+
+### 3. Front-End Situation Deck & Linter Fixes
+
+#### [MODIFY] [src/components/MissionReportModal.tsx](file:///Users/mustafa.munir/Personal/aegis-master/src/components/MissionReportModal.tsx)
+*   **Impure Random Render Bypassed**: Completely removed `Math.random()` inside the rendering body. Replaced it with a `useMemo` hook that deterministically hashes `report.report_id` using character code algorithms.
+*   **JSX Comments Resolved**: Wrapped raw double-slash strings (`//`) in JSX brackets (`{"//"}`) on lines 37 and 260 to satisfy strict ESLint JSX node tags.
+
+#### [MODIFY] [src/components/ReasoningLog.tsx](file:///Users/mustafa.munir/Personal/aegis-master/src/components/ReasoningLog.tsx)
+*   **State Redundancy Eliminated**: Removed unnecessary `useState` and synchronous effect hook `setDisplayLogs(logs.slice(-15))`. Replaced it with clean derived state computation (`const displayLogs = logs.slice(-15)`), improving React performance and satisfying strict setState-in-effect lint directives.
+
+#### [MODIFY] [src/components/TacticalMap.tsx](file:///Users/mustafa.munir/Personal/aegis-master/src/components/TacticalMap.tsx)
+*   **Asynchronous Mounting**: Wrapped the synchronous mounting state update (`setIsMounted(true)`) inside an asynchronous `setTimeout` macrotask with hook cleanup bounds, satisfying react-hooks rendering checks.
+
+#### [MODIFY] [src/app/responder/page.tsx](file:///Users/mustafa.munir/Personal/aegis-master/src/app/responder/page.tsx)
+*   **Asynchronous Mounting**: Triggered mounting states asynchronously.
+*   **JSX Entities Escaped**: Escaped unescaped raw double-quotes in verified intelligence feeds with `&quot;` to maintain strict JSX validation.
+
+---
+
+### 4. Grounding & Scraper Services
+
+#### [MODIFY] [src/lib/supabase.ts](file:///Users/mustafa.munir/Personal/aegis-master/src/lib/supabase.ts)
+*   Integrated SSL/TLS insecure bypass flags (`process.env.SUPABASE_TLS_INSECURE_FALLBACK`) for local REST development instances and reconciled trailing empty lines.
+
+#### [MODIFY] [src/app/api/events/route.ts](file:///Users/mustafa.munir/Personal/aegis-master/src/app/api/events/route.ts)
+*   Configured compact view overrides to reduce REST payload sizes during simulation streams.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+*   **Linter Checks**: Run `npm run lint` or `npx eslint` to verify syntactical purity.
+*   **Trailing Newline Checks**: Execute `hexdump` or POSIX file inspections (`tail -c 1`) to guarantee every file terminates cleanly in exactly one `\n`.
+
+### Manual Verification
+1. Open the situation deck at `http://localhost:3000`.
+2. Upload bulk mock files via the Tactical Deck. Verify the Coordinator distributes processes smoothly.
+3. Check the spotlight incident panning behavior. Verify the camera pans, zooms, and tilts ($45^\circ$) smoothly using `easeInOutCubic` easing.
+4. Issue a voice override command. Verify that the transcript parses successfully and changes the Zustand state.

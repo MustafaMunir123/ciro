@@ -1,0 +1,191 @@
+# CIRO API Specifications & Data Dictionary
+
+This document serves as the master technical dictionary and data catalog for the **CIRO platform**. It outlines every core REST/SSE endpoint, database table attribute, and external API payload model integrated into the situation cockpit.
+
+---
+
+## 🌐 1. API Endpoints Dictionary
+
+### 🗺️ A. Coordinates & Routing (`/api/coordinate`)
+
+#### 📡 `GET /api/coordinate/stream`
+*   **Purpose**: Establishes a server-sent events (SSE) channel between the Coordinator and the client, transmitting raw coordinates and landmarks as they arrive.
+*   **Headers**:
+    ```http
+    Content-Type: text/event-stream
+    Cache-Control: no-cache
+    Connection: keep-alive
+    ```
+*   **Event Payload Model**:
+    ```json
+    {
+      "incident_id": "INC-893-X",
+      "status": "STREAMING",
+      "panned_coordinates": {
+        "lat": 33.6844,
+        "lng": 73.0479
+      },
+      "source_landmark": "Sector G-11 Islamabad"
+    }
+    ```
+
+---
+
+### 🚨 B. Dispatch Registry & Events (`/api/events`)
+
+#### 📋 `GET /api/events`
+*   **Purpose**: Fetches the global collection of processed, triaged, and resolved incidents from the Zustand store/Supabase.
+*   **Query Parameters**:
+    *   `limit` *(optional, integer)*: Maximum incidents to fetch (default: `50`).
+    *   `category` *(optional, string)*: Filter by type (e.g. `FLOOD`, `STRUCTURAL`, `COMMAND_OVERRIDE`).
+*   **Response Payload**:
+    ```json
+    [
+      {
+        "id": "evt-7728",
+        "category": "FLOOD",
+        "priority": "CRITICAL",
+        "status": "TRIAGED",
+        "location": {
+          "address": "Maritime District Sector 4",
+          "lat": 24.8607,
+          "lng": 67.0011
+        },
+        "required_asset": "MARINE",
+        "responder_status": "AWAITING"
+      }
+    ]
+    ```
+
+#### 📍 `GET /api/events/nearby`
+*   **Purpose**: Performs a server-side spatial Haversine calculation to locate incidents surrounding a spotlight centroid.
+*   **Query Parameters**:
+    *   `lat` *(required, float)*: Centroid latitude.
+    *   `lng` *(required, float)*: Centroid longitude.
+    *   `radius_km` *(optional, float)*: Search radius in kilometers (default: `10.0`).
+*   **Response Payload**:
+    ```json
+    {
+      "centroid": { "lat": 24.8607, "lng": 67.0011 },
+      "radius_km": 10.0,
+      "results": [
+        {
+          "id": "evt-7728",
+          "distance_km": 3.42,
+          "priority": "CRITICAL"
+        }
+      ]
+    }
+    ```
+
+---
+
+### 📡 C. Scraping & Grounding Intelligence (`/api/intel`)
+
+#### 🔍 `POST /api/intel/fetch`
+*   **Purpose**: Routes incoming landmarks through the Triage Agent, scraping adjacent local databases and grounding coordinates for absolute verification.
+*   **Request Body**:
+    ```json
+    {
+      "landmark": "Shah Faisal Mosque, Islamabad",
+      "allow_scraping": true
+    }
+    ```
+*   **Response Payload**:
+    ```json
+    {
+      "resolved_address": "Faisal Mosque, Islamabad, Pakistan",
+      "coordinates": { "lat": 33.7297, "lng": 73.0373 },
+      "grounding_queries": [
+        "Faisal Mosque structural capacity checks 2026",
+        "Margalla Hills drainage overflow alerts"
+      ],
+      "source": "Local Landmark DB + Scraper Core"
+    }
+    ```
+
+---
+
+### 🌧️ D. Meteorological Layer (`/api/weather`)
+
+#### 🌡️ `GET /api/weather/current`
+*   **Purpose**: Retrieves real-time weather alerts and current metrics using a local secure TLS fallback handler.
+*   **Query Parameters**:
+    *   `lat` *(required, float)*: Incident latitude.
+    *   `lng` *(required, float)*: Incident longitude.
+*   **Response Payload**:
+    ```json
+    {
+      "location": {
+        "name": "Karachi",
+        "region": "Sindh",
+        "country": "Pakistan",
+        "lat": 24.8607,
+        "lon": 67.0011,
+        "localtime": "2026-05-18 21:15"
+      },
+      "current": {
+        "temp_c": 34.2,
+        "feelslike_c": 38.6,
+        "humidity": 72,
+        "wind_kph": 18.5,
+        "precip_mm": 0.0,
+        "vis_km": 10.0,
+        "uv": 6.0,
+        "condition": "Humid / Haze"
+      }
+    }
+    ```
+
+---
+
+## 🗄️ 2. Database Schema & Dictionary
+
+### 📋 A. `incidents`
+Stores all incoming alerts processed by the cooperative Coordinator-Triage pipelines.
+
+| Column Name | Data Type | Constraint | Description |
+|---|---|---|---|
+| `id` | `VARCHAR(64)` | `PRIMARY KEY` | Unique ID (e.g. `evt-88392-k`). |
+| `category` | `VARCHAR(64)` | `NOT NULL` | Emergency class (`FLOOD`, `STRUCTURAL`, `COMMAND`). |
+| `priority` | `VARCHAR(16)` | `NOT NULL` | Severity rating (`CRITICAL`, `HIGH`, `NORMAL`). |
+| `status` | `VARCHAR(32)` | `NOT NULL` | Lifecycle state (`PENDING`, `ANALYZING`, `TRIAGED`, `RESOLVED`). |
+| `responder_status` | `VARCHAR(32)` | `DEFAULT 'AWAITING'` | Units status (`AWAITING`, `ACKNOWLEDGED`, `EN_ROUTE`, `ON_SCENE`). |
+| `lat` | `DOUBLE PRECISION`| `NOT NULL` | Centroid GPS Latitude coordinate. |
+| `lng` | `DOUBLE PRECISION`| `NOT NULL` | Centroid GPS Longitude coordinate. |
+| `extracted_address` | `TEXT` | `NULL` | Grounded landmarks resolved address. |
+| `structural_damage` | `VARCHAR(128)`| `NULL` | Structural damage evaluation. |
+| `flood_level` | `VARCHAR(64)` | `NULL` | Rain/Water metric (e.g. `4.2 ft`). |
+| `people_safety` | `VARCHAR(128)`| `NULL` | Status of civilians (`TRAPPED`, `SAFE`). |
+| `required_asset` | `VARCHAR(16)` | `NULL` | Logistics division dispatched (`AIR`, `MARINE`, `GROUND`). |
+
+---
+
+### 📝 B. `event_dispatches`
+Tracks log audits written by the Logistics Agent on unit assignments.
+
+| Column Name | Data Type | Constraint | Description |
+|---|---|---|---|
+| `dispatch_id` | `UUID` | `PRIMARY KEY` | Unique dispatch tracking UUID. |
+| `incident_id` | `VARCHAR(64)` | `FOREIGN KEY` | Links to `incidents.id`. |
+| `assigned_unit` | `VARCHAR(64)` | `NOT NULL` | e.g. `MARINE-DELTA-01` or `AIR-EAGLE-03`. |
+| `dispatched_at` | `TIMESTAMP` | `DEFAULT NOW()`| Timestamp of dispatcher release. |
+| `estimated_arrival` | `INTEGER` | `NOT NULL` | Estimated duration in minutes. |
+| `dispatch_log` | `TEXT` | `NULL` | Markdown audit trail written by Logistics Agent. |
+
+---
+
+### 📓 C. `mission_reports`
+Houses final assessments compiled by the Reporter Agent upon simulation closure.
+
+| Column Name | Data Type | Constraint | Description |
+|---|---|---|---|
+| `report_id` | `VARCHAR(64)` | `PRIMARY KEY` | Unique report identifier (e.g. `REP-5541`). |
+| `generated_at` | `TIMESTAMP` | `DEFAULT NOW()`| Creation timestamp. |
+| `classification` | `VARCHAR(32)` | `DEFAULT 'SECRET'`| Document classification (`SECRET`, `TOP SECRET`). |
+| `executive_summary` | `TEXT` | `NOT NULL` | High-level situation synopsis. |
+| `total_signals` | `INTEGER` | `NOT NULL` | Total processed signal metrics. |
+| `validated_incidents` | `INTEGER` | `NOT NULL` | Count of validated emergencies. |
+| `protocol_zero_hits` | `INTEGER` | `NOT NULL` | Triggered override counts. |
+| `situational_assessment`| `TEXT` | `NOT NULL` | Deep post-incident AI critique. |
+| `integrity_hash` | `VARCHAR(64)` | `NOT NULL` | Deterministic SHA-256 validation string. |

@@ -1,0 +1,273 @@
+# AEGIS: Actionable Agile User Stories & Engineering Blueprint
+### Rebuilding the Crisis Control situation room, step-by-step.
+
+This document translates the master architecture of **AEGIS** into a series of highly granular, actionable, and sequence-ordered User Stories. It serves as an executive checklist for any developer or pair-programming agent tasked with rebuilding the platform from scratch.
+
+---
+
+## Epic 1: System Foundation & Premium Cyberpunk UI Shell
+
+### User Story 1.1: Next.js Boilerplate & Typed Configs
+**As a** Lead System Engineer,  
+**I want to** initialize a highly stable Next.js 16 + TypeScript project structure,  
+**So that** all subsequent server routes, UI components, and API helpers have first-class typed configuration support.
+
+*   **Story Points**: 1 (XS)
+*   **Technical Implementation Details**:
+    *   Initialize the Next.js App Router workspace utilizing clean import aliases (`@/*`).
+    *   Install baseline dependencies: `@google/genai` (SDK), `@vis.gl/react-google-maps`, `lucide-react`, `framer-motion`, `zustand`, and `clsx`/`tailwind-merge` (`cn` helper).
+    *   Establish system environment variables inside a typed `.env.local` containing Supabase endpoints, Google Maps keys, WeatherAPI keys, SerpAPI credentials, and Gemini API keys.
+*   **Acceptance Criteria**:
+    *   [ ] The project compiles successfully without any TypeScript compiler (`tsc`) warnings or warnings in `next.config.js`.
+    *   [ ] Path alias `@/*` matches `src/*` correctly.
+    *   [ ] Baseline environment configs can be securely parsed at runtime.
+
+---
+
+### User Story 1.2: Cyberpunk Theme & Glassmorphic Design System
+**As an** Operator in a high-intensity crisis situation room,  
+**I want to** interact with a gaming-inspired dark dashboard with glassmorphism panels, scanlines, and high-visibility markers,  
+**So that** my eyes do not experience fatigue during long operations and high-priority alarms stand out immediately.
+
+*   **Story Points**: 3 (S)
+*   **Technical Implementation Details**:
+    *   Create `src/app/globals.css` (or `index.css`) containing key HSL color tokens for the AEGIS cyber-theme (deep cyber black `#040814`, neon cyan, hazard amber, warning orange, and high-criticality crimson).
+    *   Implement structural utility classes:
+        *   `.glass-panel`: Back-drop blur (`backdrop-blur-md`), dark blue translucent backgrounds (`rgba(4, 8, 20, 0.45)`), and neon border glows.
+        *   `.animate-scan-down-full` / `.animate-scan-up-full`: Gliding laser sweeps utilizing vertical translations.
+        *   `.animate-radar-spin`: Custom rotating borders for markers under system analysis.
+        *   CRT overlay grid filter via `linear-gradient` overlays on the viewport.
+*   **Acceptance Criteria**:
+    *   [ ] Glassmorphism background blur displays correctly on modern browsers.
+    *   [ ] Horizontal scanline animations glide across the dashboard without consuming excessive CPU resources.
+    *   [ ] Alert color utility classes (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) reflect their respective HSL/Hex hazard representations.
+
+---
+
+## Epic 2: Core Database & Persistent Synchronization Layer
+
+### User Story 2.1: Supabase scan_events Table & Indices Setup
+**As an** Intelligence Analyst,  
+**I want to** establish a normalized database schema in Supabase with indexes on timestamps and coordinates,  
+**So that** thousands of raw signals and disaster records can be queried in milliseconds.
+
+*   **Story Points**: 2 (S)
+*   **Technical Implementation Details**:
+    *   Execute the SQL DDL block to create the `public.scan_events` table.
+    *   Define columns for spatial coordinates (`lat`, `lng`, `area_lat`, `area_lng`), tags (`event_tags`), nested JSON blobs (`source_trail`, `road_coords`), and system flags (`is_user_submitted`, `manual_trace_required`).
+    *   Implement desc indexes on `updated_at`, `scan_datetime`, and `news_date`. Create a conditional index on spatial points (`lat, lng`) to ignore null records and accelerate rendering on maps.
+*   **Acceptance Criteria**:
+    *   [ ] The table is successfully created in Supabase with RLS (Row Level Security) service-role access.
+    *   [ ] Database indexes show active status and correctly optimize spatial queries.
+    *   [ ] Legacy event IDs can be successfully patched or appended with UUIDs via database migrations.
+
+---
+
+### User Story 2.2: Unified Database CRUD Route with local SSL Fallback
+**As a** Full-Stack Developer,  
+**I want to** expose a Next.js App Router API endpoint for event operations that dynamically routes through HTTPS/REST with insecure TLS bypasses,  
+**So that** local development machines do not fail during local certificate chain validations.
+
+*   **Story Points**: 3 (M)
+*   **Technical Implementation Details**:
+    *   Create [src/app/api/events/route.ts](file:///Users/mustafa.munir/Personal/aegis-master/src/app/api/events/route.ts) handling `GET`, `POST`, and `DELETE`.
+    *   **GET Handler**: Parse optional query params (`limit`, `city`, `area`, `status`, `view=compact|full`, `fields=a,b`). Optimize the return size by filtering columns if `view=compact` is selected.
+    *   **POST Handler**: Upsert records. Calculate `city` and `area` dynamically from spoken/written addresses. Run image scrapers to persist remote thumbnails locally to avoid broken links.
+    *   **Fallback Logic**: Wrap standard Supabase calls. If an error contains `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` or `fetch failed`, immediately fallback to a direct HTTPS REST request using a Node `https.request` agent initialized with `rejectUnauthorized: false`.
+*   **Acceptance Criteria**:
+    *   [ ] The REST endpoint is fully functional and supports CORS.
+    *   [ ] Local SSL warnings do not crash the database connection in local dev environments.
+    *   [ ] `view=compact` returns a payload size optimized for network speed.
+    *   [ ] POST calls calculate correct city/area splits (e.g., *"Saddar, Karachi"* $\rightarrow$ area: Saddar, city: Karachi).
+
+---
+
+### User Story 2.3: Persistent Zustand Store with Cross-Tab Storage Sync
+**As an** Operator multitasking across multiple monitors,  
+**I want** changes made on my map tab to instantly synchronize with my logs tab and survive manual page refreshes,  
+**So that** I maintain a single unified tactical view across my system.
+
+*   **Story Points**: 3 (M)
+*   **Technical Implementation Details**:
+    *   Write `src/lib/store.ts` initializing a Zustand store using the `persist` middleware with local storage persistence.
+    *   Define core state slices: `incidents`, `logs`, `isPlaying`, `spotlightId`, `processingBatch`, `rawThinkingProcess`, `activeAgent`, `isVoiceProcessing`.
+    *   Configure `partialize` to exclude transient front-end flags (e.g. streaming thoughts, open report overlays) and persist only persistent disaster arrays and logs.
+    *   Hook a `storage` listener to `window` that parses changes to the localStorage storage key, debounces the payload, and calls `useSimulationStore.setState` to reflect updates in other tabs.
+*   **Acceptance Criteria**:
+    *   [ ] Incidents list survives page reload.
+    *   [ ] Opening two separate browser windows at `http://localhost:3000` and clicking play on one starts the timer and updates incidents on the other instantaneously.
+    *   [ ] Transient loading and streaming elements do not leak into persisted local storage.
+
+---
+
+## Epic 3: Multi-Agent Pipeline & Coordinator SSE Routing Engine
+
+### User Story 3.1: Coordinator Route & Server-Sent Events (SSE) Stream
+**As an** Operator monitoring a live disaster feeds,  
+**I want to** see the system's Coordinator analyzing signals in real-time, streaming its step-by-step reasoning log before handoffs,  
+**So that** I understand why the AI system categorized an incident or routed it to a specific sub-agent.
+
+*   **Story Points**: 5 (L)
+*   **Technical Implementation Details**:
+    *   Build `src/app/api/coordinate/stream/route.ts` with Next.js edge-friendly NodeJS runtime features.
+    *   Establish a Server-Sent Events (SSE) connection by returning a `Response` initialized with a `ReadableStream`.
+    *   Instantiate Gemini 2.5 Flash as the Coordinator. Write system instructions defining agentic handoff criteria based on incident types (Audio/Text $\rightarrow$ Triage; Video/Images $\rightarrow$ Surveillance; Assets/Requests $\rightarrow$ Logistics).
+    *   Format SSE chunk outputs as structured JSON lines (`{"type": "thought", "content": "..."}`, `{"type": "agent_info", "agent": "..."}`).
+*   **Acceptance Criteria**:
+    *   [ ] The route responds with header `Content-Type: text/event-stream`.
+    *   [ ] The front-end receives data chunks sequentially, parsing and rendering reasoning logs line-by-line.
+    *   [ ] Inconclusive model formats fall back to safe deterministic routing (inspecting file extensions like `.mp3`/`.mp4`).
+
+---
+
+### User Story 3.2: Multi-modal Triage Agent & Landmark Parsing
+**As an** Operator,  
+**I want** raw, voice distress calls or written distress messages to be parsed for local landmarks, safety conditions, and casualty counts,  
+**So that** we can extract location markers and risk parameters automatically from plain-English or Urdu-hybrid statements.
+
+*   **Story Points**: 5 (L)
+*   **Technical Implementation Details**:
+    *   Write `src/agents/triage.ts` exposing `triageIncident(incident, streamThoughtCallback)`.
+    *   Define a system prompt directing Gemini to extract specific parameters:
+        *   `location_landmarks`: Spoken place names (e.g., *"Gulshan Transformer near Disco Bakery"*).
+        *   `people_safety`: Assess if citizens are in `IMMEDIATE_DANGER` or `STABLE`.
+        *   `extracted_coordinates`: Landmarks resolved to latitude and longitude using map APIs or news grounding databases.
+        *   `requires_logistics`: Boolean flag representing need for resource dispatch.
+    *   Pipe intermediate reasoning thoughts to the caller's streaming SSE callbacks.
+*   **Acceptance Criteria**:
+    *   [ ] Raw transcription text is mapped to structured fields: safety levels, coordinates, and emergency categories.
+    *   [ ] Triage intermediate thoughts stream directly into the dashboard console.
+
+---
+
+### User Story 3.3: Logistics Agent & Asset Allocator Audit Trail
+**As a** Logistics Dispatcher,  
+**I want** resource requests to be reviewed by an agent that maps nearby available vehicles, calculates dispatch audits, and outputs a clean markdown trail,  
+**So that** we have a transparent log explaining why a specific ambulance or rescue unit was dispatched.
+
+*   **Story Points**: 4 (M)
+*   **Technical Implementation Details**:
+    *   Create `src/agents/logistics.ts` exposing `manageLogistics(incident, streamThoughtCallback)`.
+    *   Establish a simulated asset fleet structure containing emergency vehicles, types (Fire Truck, Ambulance, Police Cruiser), statuses (Available, On Route), and baseline headquarters coordinates.
+    *   Define an LLM logic layer that evaluates the triaged incident, selects the closest eligible vehicle, assigns a priority routing pattern, and returns an array of `_audit_logs`.
+*   **Acceptance Criteria**:
+    *   [ ] Resource dispatches generate clear, step-by-step markdown audit logs explaining vehicle selection and travel routes.
+    *   [ ] Audit logs are successfully streamed via SSE and stored in the database's `source_trail` JSON blob.
+
+---
+
+## Epic 4: Spatial & Temporal Crisis Verification (Grounding)
+
+### User Story 4.1: Spoken-to-GPS Telemetry Spatial Audit (Map Forensics)
+**As a** Tactical Commander,  
+**I want** the system to calculate the distance between the spoken landmark address and the actual physical device GPS coordinate that sent the signal,  
+**So that** we are warned of spatial anomalies or spoofed coordinates before deploying units.
+
+*   **Story Points**: 4 (M)
+*   **Technical Implementation Details**:
+    *   Implement spatial comparison logic in the coordinate processing stream.
+    *   Compute the distance (using the Haversine formula) between the physical transmitter's GPS coordinates (`device_lat`, `device_lng`) and the coordinate coordinates resolved from the spoken landmark address.
+    *   If the distance difference exceeds $500\text{m}$:
+        1. Set the incident flag `manual_trace_required` to `true`.
+        2. Set `status` to `PENDING` or `UNCONFIRMED`.
+        3. Preserve the conflicting coordinates in `address_conflict_details`.
+*   **Acceptance Criteria**:
+    *   [ ] Spoken addresses with coordinates within $500\text{m}$ of physical GPS coordinates bypass validation warnings automatically.
+    *   [ ] Spoken coordinates exceeding $500\text{m}$ of distance trigger an immediate `manual_trace_required: true` database flag.
+    *   [ ] Map UI displays an orange warning marker for conflicting coordinates.
+
+---
+
+### User Story 4.2: Historical Event Filtering via News API Date Fusion (Temporal Auditing)
+**As an** Operator overwhelmed with news streams,  
+**I want** incoming disaster topics to be searched against Google News in real-time to check if the disaster is historical or active,  
+**So that** older, solved events do not clog our active response dashboard.
+
+*   **Story Points**: 4 (M)
+*   **Technical Implementation Details**:
+    *   Integrate a SerpAPI Google News light crawler inside `src/lib/data-fetching-layer.ts`.
+    *   When an event is received, execute a query: `q = topic + area + city`.
+    *   Extract the latest publication date (`published_at`) from news results.
+    *   Calculate the elapsed time: `now() - latest_publish_date`. If the delta exceeds 24 hours, tag the incident as historical.
+    *   Override and downgrade the incident's severity to `LOW` and write a temporal audit trace inside the incident's metadata.
+*   **Acceptance Criteria**:
+    *   [ ] Scrapes retrieve active local news listings based on city and topic queries.
+    *   [ ] Scrape publication dates older than 24 hours trigger an automatic priority downgrade.
+    *   [ ] Downgraded incidents feature a tag indicating historical status.
+
+---
+
+## Epic 5: Interactive 3D Tactical Situation Room
+
+### User Story 5.1: Dark-Themed Google Maps Canvas & Telemetry Overlays
+**As a** Tactical Commander,  
+**I want** an interactive dark-styled vector map featuring CRT scanner sweep overlays, vignette borders, and radar marker pulses,  
+**So that** I feel fully immersed in a high-fidelity tactical environment.
+
+*   **Story Points**: 4 (M)
+*   **Technical Implementation Details**:
+    *   Create [src/components/TacticalMap.tsx](file:///Users/mustafa.munir/Personal/aegis-master/src/components/TacticalMap.tsx) importing `@vis.gl/react-google-maps`.
+    *   Apply dark styling options via standard map IDs (`mapId`) and force uniformity by wrapping the map canvas in a filtered container (`filter: brightness(0.7) contrast(1.2) grayscale(0.3)`).
+    *   Incorporate absolute overlays: CRT horizontal scanline divs, glowing vignette borders, and glowing grid corner indicator SVGs.
+*   **Acceptance Criteria**:
+    *   [ ] The Google Map displays in high-contrast dark mode without map controls or commercial icons.
+    *   [ ] Custom styled HTML markers pulse with size-changing animations depending on their severity level.
+    *   [ ] Scanning laser lines glide vertically across the map surface.
+
+---
+
+### User Story 5.2: Spotlight Worker Pool & Cinematic 3D ease Fly-To Camera Controller
+**As an** Operator monitoring a fast-flowing disaster simulation,  
+**I want** the map camera to automatically glide, tilt, and zoom towards active spotlighted and focused incidents without UI stutter or rapid jumping,  
+**So that** my focus is guided naturally to the most critical scenes.
+
+*   **Story Points**: 5 (L)
+*   **Technical Implementation Details**:
+    *   Implement a `MapController` child component inside the `<Map>` provider that hooks to Zustand store slices: `spotlightId` and `focusedIncidentId`.
+    *   Write a camera fly-to function utilizing a recursive `requestAnimationFrame` loop.
+    *   Instead of jumping directly, interpolate:
+        *   **Zoom**: Create a parabolic curve (zoom out during travel, zoom in to `18` at arrival).
+        *   **Tilt**: Transition from top-down flat (`0` tilt) during travel to a dynamic 3D angle (`45` tilt) upon arrival.
+        *   **Coordinate**: Smoothly transition from starting lat/lng to target lat/lng using `easeInOutCubic` easing.
+*   **Acceptance Criteria**:
+    *   [ ] The map camera glides smoothly to a newly spotlighted incident over a majestic 4-second duration.
+    *   [ ] The camera tilts to a 3D isometric perspective upon arrival at the destination coordinate.
+    *   [ ] The front-end remains interactive and does not lock up during the panning animation.
+
+---
+
+### User Story 5.3: Voice of God Overrides & Command Deck Actions
+**As a** Tactical Commander,  
+**I want to** speak or type natural commands (e.g., *"Deploy Ambulance to Korangi Industrial fire"* or *"Clear Saddar Building collapse warning"*),  
+**So that** I can direct field assets and resolve coordinates vocally without clicking menu buttons.
+
+*   **Story Points**: 5 (L)
+*   **Technical Implementation Details**:
+    *   Build a voice capture button in the main control bar utilizing the HTML5 `MediaRecorder` API to capture webm audio snippets.
+    *   Send the voice clip to a backend transcription API or handle natural language command parsing via Gemini 2.5 Flash.
+    *   Extract actionable intent:
+        *   `intent`: UPDATE_PRIORITY | DISPATCH_VEHICLE | RESOLVE_CONFLICT
+        *   `target_incident_id`: The incident reference.
+        *   `action_parameters`: Severity parameters or specific coordinates.
+    *   Dispatch the respective actions to the Zustand store, prompting a success/error HUD notification.
+*   **Acceptance Criteria**:
+    *   [ ] Voice recording can be successfully initiated, paused, and converted to base64 audio payloads.
+    *   [ ] Commands like *"Set Saddar incident to Critical"* successfully alter the target's priority state in the persistent Zustand array.
+    *   [ ] The UI shows visual mic volume meters and active loading spinners during voice command processing.
+
+---
+
+### User Story 5.4: Protocol Zero Emergency Dispatch Gate
+**As a** Tactical Commander,  
+**I want** high-criticality dispatches or heavy dispatches to pause and await my explicit verification or passcode before deploying resources,  
+**So that** we prevent catastrophic false-positive dispatches or accidental deployments of real-world rescue assets.
+
+*   **Story Points**: 3 (M)
+*   **Technical Implementation Details**:
+    *   In corporate a check inside the Coordinator stream: if the incident priority is `CRITICAL` or includes hazardous tags (e.g. `fireHazard` or `civilUnrest`), set the incident's `auth_status` field to `PENDING`.
+    *   On the UI, display a high-alert flashing border on the incident card labeled **"PROTOCOL ZERO: AUTHORIZATION REQUIRED"**.
+    *   Prevent logistics units from progressing to `ON_ROUTE` until the commander manually inputs a pin or vocally submits an authorization command.
+*   **Acceptance Criteria**:
+    *   [ ] Critical dispatch flows are successfully intercepted and held in a pending authorization state.
+    *   [ ] Denied or aborted commands successfully purge the pending resource request and log an audit trail trace.
+    *   [ ] Authorized dispatches instantly release the hold, updating status to `TRIAGED` and routing coordinates to the map.

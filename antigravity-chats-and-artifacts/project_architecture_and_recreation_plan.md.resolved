@@ -1,0 +1,241 @@
+# AEGIS: Command Intelligence & Tactical Response System
+### System Architecture & Recreation Blueprint
+
+AEGIS is an advanced, high-fidelity emergency response and intelligence scraping dashboard. It monitors real-time distress signals, transcribes voice coordinates, resolves spatial anomalies, audits logistics dispatches, scrapes live media streams, and visualizes tactical situation rooms with cinematic telemetry.
+
+---
+
+## 1. System Overview & Core Capabilities
+
+At its core, AEGIS is designed to ingest multi-modal crisis feeds (e.g., text, emergency audio files, news reports, social media alerts) and orchestrate rapid dispatch decisions. It is designed to act as a **"Traffic Cop" for crisis response**, utilizing a hierarchy of specialized AI agents built on **Google Gemini 2.5 Pro & Flash**.
+
+```mermaid
+graph TD
+    A[Multi-Modal Signal Ingestion] --> B[Coordinator Agent]
+    B -->|Triage Feed| C[Triage Agent]
+    B -->|Surveillance Video| D[Surveillance Agent]
+    B -->|Resource Request| E[Logistics Agent]
+    
+    C -->|Request Dispatch| E
+    E -->|Audit Trail| F[Tactical Map & State Sync]
+    
+    F -->|Supabase Sync| G[(Database Layer)]
+    F -->|Zustand Sync| H[HUD Dashboard UI]
+```
+
+### Key Technical Pillars
+1. **Multi-Agent Crisis Orchestration**: A central `Coordinator` agent parses incoming signals and routes them dynamically to specialized sub-agents (`Triage`, `Surveillance`, `Logistics`).
+2. **Spotlight Parallel Worker Pool**: To prevent main-thread blockages, the front-end handles incidents in sequential parallel batches. A single **"Hero" incident** is put under the spotlight, triggering high-fidelity real-time thought monologues and camera fly-ins, while remaining **background incidents** process concurrently.
+3. **Dual Grounding & Map Forensics**: Spatial validation that compares spoken/described addresses with GPS device locations. Discrepancies ($>500\text{m}$) trigger location ambiguity alerts and flag markers for manual commander verification.
+4. **Temporal Verification**: Filters news and disaster streams with Google Search APIs (SerpAPI) to isolate active crises from historical events ($>24$ hours old), downgrading stale alerts to prevent system quota spam.
+5. **Protocol Zero**: A system-wide safety mechanism. Extremely high-severity actions are held in a pending state until a commander manually or vocally authorizes the dispatch.
+6. **Voice of God Commands**: Natural language voice commands transcribed from emergency audio overlays to override state, approve dispatches, or drop manual pins.
+
+---
+
+## 2. Technology Stack & Core Dependencies
+
+AEGIS relies on a modern, ultra-premium framework stack for speed, responsiveness, and aesthetic impact:
+
+- **Framework**: **Next.js 16 (App Router)** with TypeScript for a fast, typed, SSR-compatible backend API layer.
+- **AI Core**: **Google Gen AI SDK (`@google/genai`)** utilizing **Gemini 2.5 Flash** for rapid routing and **Gemini 2.5 Pro** for critical triage and logistics analysis.
+- **Database & Syncer**: **Supabase** (PostgreSQL) coupled with custom resilient **REST/HTTPS fallbacks** to bypass local SSL/TLS certificate warnings in development environments.
+- **Front-End State**: **Zustand** with local storage persistence and **cross-tab browser storage synchronization** via storage listeners.
+- **Visual Mapping**: **Google Maps API (`@vis.gl/react-google-maps`)** driving a dark-themed vector map with custom 3D flying camera controllers.
+- **Aesthetic Styling**: **Tailwind CSS v4** combined with **Framer Motion**, glassmorphism tiles, scanning laser animations, and CRT-scanline filters.
+
+---
+
+## 3. Subsystem Architecture
+
+### A. The Multi-Agent Coordinator & Streaming Pipeline
+All multi-agent pipelines converge inside [route.ts](file:///Users/mustafa.munir/Personal/aegis-master/src/app/api/coordinate/stream/route.ts). Instead of standard static JSON responses, AEGIS utilizes **Server-Sent Events (SSE)** to stream the Coordinator's internal reasoning process to the HUD in real-time.
+
+1. **Coordinator Routing**: Receives the incident, inspects file attachments, and streams its initial thoughts.
+2. **Handoff Rules**:
+   - Audio/Text Distress $\rightarrow$ `Triage Agent`
+   - Video Feeds/CCTV $\rightarrow$ `Surveillance Agent`
+   - Assets & Resource Requests $\rightarrow$ `Logistics Agent`
+3. **Agentic Escalation**: If the `Triage Agent` determines that emergency units (e.g., ambulances, firefighters) must be dispatched, it flags `requires_logistics: true`. The pipeline automatically executes a server-side handoff to the `Logistics Agent` mid-stream, consolidating the audit logs and final coordinates into a unified response.
+
+### B. Dual Grounding & Map Forensics
+Spoken crisis descriptions are frequently inaccurate. Spatially resolving location discrepancies is handled through a double-check pattern:
+- **Speech Extraction**: The audio triage agent transcribes the voice distress call.
+- **Spacial Extraction**: An LLM parses the spoken text to extract structured landmarks and raw coordinates (e.g., *"Empress Market, Saddar"*).
+- **Telemetry Check**: The system calculates the Haversine distance between the extracted coordinates and the physical GPS coordinates of the device that transmitted the signal.
+- **Conflict Handling**: If distance $> 500\text{m}$, the system:
+  1. Flags the incident with `manual_trace_required: true`.
+  2. Anchors the marker with a distinct `?` (Unconfirmed Warning) style on the map.
+  3. Displays an alert in the HUD to let the operator manually review, drag, or override the coordinates.
+
+### C. Spotlight Protocol (Sequential Worker Pool)
+To prevent browser UI lag when hundreds of events are fetched during a disaster stream:
+- The Zustand store manages a `processingBatch` array of incident IDs.
+- A sequential worker selects a single `spotlightId`. This "Hero" incident is processed with a streaming AI request.
+- All remaining incidents are processed in parallel background fetch threads without SSE streams.
+- The map controller triggers a cinematic 3D ease fly-to animation targeting the "Hero" incident, tilting the camera 45 degrees and zooming into street-level (zoom level `18`).
+
+```javascript
+// Isometric cubic easing for smooth camera movement
+const easeInOutCubic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+```
+
+### D. Temporal Verification & Scraping Layer
+Crisis scraping utilizes SerpAPI's `google_news_light` engine inside [data-fetching-layer.ts](file:///Users/mustafa.munir/Personal/aegis-master/src/lib/data-fetching-layer.ts) to verify alerts:
+1. **Live Search**: Pulls local articles matching `${topic} ${area} ${city}`.
+2. **Date Fusion**: Audits the article dates. If the latest news is older than 24 hours, the system marks the incident as historical.
+3. **Priority Mitigation**: Historical topics are automatically downgraded to `LOW` priority, preventing false-positive alerts on legacy articles.
+4. **Data Enrichment**: Generates real-time AI summaries and extracts actionable precautions based on live scrapes.
+
+---
+
+## 4. Step-by-Step Recreation Blueprint
+
+Here is the structured implementation roadmap to build the AEGIS dashboard from scratch.
+
+### Phase 1: Foundation & Styling System
+1. Initialize a Next.js App Router project with TypeScript:
+   ```bash
+   npx -y create-next-app@latest ./ --typescript --tailwind --app --src-dir --import-alias "@/*"
+   ```
+2. Configure **Tailwind CSS** to support high-fidelity gaming-inspired dark-mode themes. Implement key animation utilities in your CSS file:
+   - `animate-radar-spin`: Slow rotating border animations.
+   - `animate-scan-down-full` & `animate-scan-up-full`: Double horizontal scanlines gliding vertically across the screen.
+   - `animate-pulse-fast` / `animate-ping-slow`: Intense critical alert rings around Map Markers.
+3. Create generic glassmorphism layout containers (`glass-panel`) utilizing backdrop filters, border glows, and dark deep-blue gradients (`#040814`).
+
+### Phase 2: Database Schema & Supabase Client
+1. Execute the SQL schema on your Supabase instance to create the `scan_events` table (see DDL below).
+2. Create `src/lib/supabase.ts` exposing:
+   - `getSupabaseBrowserClient()`: Standard client for client-side queries.
+   - `getSupabaseServiceClient()`: Service-role client to bypass row-level security on critical server actions.
+3. Create `src/app/api/events/route.ts` with complete CRUD support:
+   - **GET**: Paginated, filterable queries. Supports a `view=compact` vs `view=full` query param to optimize payload size during massive grid visualizations.
+   - **POST**: Upserts incidents, parses cities/areas from raw addresses, triggers AI enrichment summaries, and downloads/persists remote thumbnails locally to prevent image hotlinking breaks.
+   - **DELETE**: Wipe/purge support for clearing simulation streams.
+
+### Phase 3: Zustand State Core
+1. Create `src/lib/store.ts` using `zustand` and the `persist` middleware to cache local incident records.
+2. Implement **Cross-Tab Synchronization**: Add a window storage listener to sync incidents and play-state across multiple open browser tabs.
+3. Configure transient action handlers: `setSpotlightId`, `setProcessingBatch`, `setActiveAgent`, `isVoiceProcessing`, and `resetSimulation`.
+
+### Phase 4: Multi-Agent SSE Streaming Route
+1. Build `src/app/api/coordinate/stream/route.ts` using Next.js route handlers. Set `runtime = "nodejs"`.
+2. Configure **Server-Sent Events** streaming using `new ReadableStream()` and a `TextEncoder`.
+3. Set up the `Coordinator` prompt and response schema using structural JSON definitions via the `@google/genai` library.
+4. Import specialized files:
+   - `triageIncident`: Reviews text and distress audio files, extracting landmarks.
+   - `manageLogistics`: Selects vehicle asset assignments and compiles markdown audit logs.
+5. Chain dispatches: Let the Coordinator transfer output from Triage to Logistics seamlessly and pipe both logs directly into the client stream.
+
+### Phase 5: Front-End UI & Tactical Maps
+1. Build `src/components/TacticalMap.tsx`:
+   - Integrate `@vis.gl/react-google-maps` within an `APIProvider`.
+   - Apply a custom CSS filter directly on the map container (`filter: brightness(0.7) contrast(1.2) grayscale(0.3)`) to guarantee a premium dark theme.
+   - Build a custom `MapController` using `useMap()`. Implement the camera interpolation loop inside a `requestAnimationFrame` handler to drive cinematic 3D ease flights.
+   - Design custom markers: pulsing red rings for CRITICAL events, pulsing green for LOW, violet for User/Citizen submissions, and glowing orange `?` shapes for location conflicts.
+2. Build `src/components/ReasoningLog.tsx`:
+   - Read logs, agent audits, and `rawThinkingProcess` from Zustand.
+   - Display a streaming typewriter block that parses bold text (`**`) and alert boxes in real-time.
+   - Add a parallel processing panel showing background incidents processing asynchronously during a major crisis event.
+3. Build the primary control deck (`src/app/page.tsx`):
+   - Left Panel: Real-time Signal Feed (scrolling incident cards with progress bars and location traces).
+   - Center Panel: Tactical Map + Voice Override input (using Web Audio API to capture command transcripts).
+   - Right Panel: System Activity Logs + Real-time Streaming AI Monologues.
+   - Control Bar: Simulation play controls, active speed sliders, mock-data toggle, and "Generate Mission Report" modals.
+
+---
+
+## 5. Complete Database Schema (DDL)
+
+Run this SQL block inside your Supabase SQL editor to create the `scan_events` database structure:
+
+```sql
+-- Core scan events table
+CREATE TABLE IF NOT EXISTS public.scan_events (
+  event_id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  category TEXT,
+  priority TEXT DEFAULT 'LOW',
+  status TEXT NOT NULL,
+  city TEXT,
+  area TEXT,
+  area_lat DOUBLE PRECISION,
+  area_lng DOUBLE PRECISION,
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  address TEXT,
+  event_tags TEXT[],
+  source_trail JSONB,
+  road_coords JSONB,
+  ai_summary TEXT,
+  precautions TEXT[],
+  thumbnail TEXT,
+  scan_datetime TIMESTAMPTZ NOT NULL,
+  news_date TIMESTAMPTZ,
+  raw_input TEXT,
+  mission_context TEXT,
+  is_user_submitted BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Performance & spatial indexes
+CREATE INDEX IF NOT EXISTS scan_events_updated_at_idx ON public.scan_events (updated_at DESC);
+CREATE INDEX IF NOT EXISTS scan_events_city_area_idx ON public.scan_events (city, area);
+CREATE INDEX IF NOT EXISTS scan_events_scan_datetime_idx ON public.scan_events (scan_datetime DESC);
+CREATE INDEX IF NOT EXISTS scan_events_news_date_idx ON public.scan_events (news_date DESC);
+CREATE INDEX IF NOT EXISTS scan_events_lat_lng_idx ON public.scan_events (lat, lng) 
+  WHERE lat IS NOT NULL AND lng IS NOT NULL;
+CREATE INDEX IF NOT EXISTS scan_events_is_user_submitted_idx ON public.scan_events (is_user_submitted) 
+  WHERE is_user_submitted = TRUE;
+
+-- Safety extensions
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+```
+
+---
+
+## 6. Directory Structure & Key Files
+
+When replicating this workspace, structure your directory layout exactly as follows:
+
+```text
+aegis-master/
+├── src/
+│   ├── agents/
+│   │   ├── triage.ts          # Distressed transcription parsing & landmarks extraction
+│   │   └── logistics.ts       # Emergency unit assignment & audit log creation
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── coordinate/
+│   │   │   │   └── stream/
+│   │   │   │       └── route.ts  # Master coordinator routing & SSE streaming engine
+│   │   │   ├── events/
+│   │   │   │   └── route.ts      # Database CRUD API (with REST/TLS fallbacks)
+│   │   │   ├── intel/
+│   │   │   │   └── fetch/
+│   │   │   │       └── route.ts  # Live scrapers (News & Social Media APIs)
+│   │   │   └── weather/
+│   │   │       ├── current/
+│   │   │       └── forecast/
+│   │   ├── page.tsx           # Premium Cyberpunk HUD UI layout
+│   │   └── layout.tsx
+│   ├── components/
+│   │   ├── TacticalMap.tsx    # 3D cinematic camera, custom markers, CRT overlays
+│   │   ├── ReasoningLog.tsx   # Live typewriter streaming monologues & background tasks
+│   │   ├── SignalFeed.tsx     # Active incident listing, scrolling cards
+│   │   └── MissionReportModal.tsx # Post-crisis consolidated briefing summaries
+│   ├── lib/
+│   │   ├── store.ts           # Zustand store (persisted, cross-tab synced)
+│   │   ├── data-fetching-layer.ts # News api, social API, HTML image scrapers
+│   │   ├── weather-layer.ts   # Live weather condition and alerts scraper
+│   │   ├── gemini-client.ts   # AI model clients
+│   │   └── types.ts           # System-wide typescript definitions
+│   └── seed/
+│       ├── pakistan_city_area_topics.json # Dataset of cities, areas, coordinates, and topics
+│       └── supabase_scan_events.sql       # Database schema setup queries
+├── package.json
+└── tailwind.config.js
+```
+
+This master architecture enables the system to scale to thousands of incoming crisis events, maintain non-blocking visual rendering in the browser, spatially cross-verify human voice calls with sat telemetry, filter out outdated topics, and provide commanders with a cinematic, glass-morphic situation room.
