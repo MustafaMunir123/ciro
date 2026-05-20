@@ -36,6 +36,30 @@ A real-time, multi-agent crisis intelligence and response orchestrator for insta
 
 ---
 
+## Agent Roles (Explicit)
+
+### 1) Coordinator Agent
+- Entry point for every event in با خبر.
+- Converts raw input into structured incident context (topic, location, urgency signals).
+- Decides the next route:
+  - Standard incident -> Triage Agent
+  - Direct operational need -> Logistics Agent (when required)
+- Controls handoff logic and keeps the pipeline flow consistent.
+
+### 2) Triage Agent
+- Performs core incident understanding and risk analysis.
+- Classifies incident type/category and assigns urgency/priority signals.
+- Produces decision-ready context (summary + reasoning for downstream actions).
+- Sets whether logistics escalation is needed (`requires_logistics`).
+
+### 3) Logistics Agent
+- Activated when the incident requires operational response support.
+- Recommends deployment/asset guidance and action direction.
+- Performs verification-oriented checks to reduce false positives where possible.
+- Returns practical response outputs used by dashboard and alert flows.
+
+---
+
 ## Antigravity Usage/Users/mustafa.munir/Personal/aegis-master/agy.mov
 
 
