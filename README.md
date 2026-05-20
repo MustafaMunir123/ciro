@@ -61,9 +61,12 @@ Chats and artifacts:
 
 ---
 
-## Assumptions
+## Assumptions and Limitations
 
-- User submissions can be multilingual and may require normalization.
+- We planned to run scans as scheduled jobs, but due to limited credentials this is currently disabled. With sufficient credentials, scans can run every 3 hours.
+- Limited API access may restrict proper verification of user-reported incidents; paid APIs can improve this.
+- With the free Gemini quota, scans in deployed environments may work only 1-2 times before quota limits are hit.
+- The system is designed to handle multilingual reports.
 - This agentic system is designed to work at any scale, so large datasets can be plugged into it for public-sector deployment and utilization.
 
 ---
