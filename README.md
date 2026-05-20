@@ -1,5 +1,7 @@
 # با خبر
 
+App Repo: [https://github.com/Arham07/google_hackathon_app](https://github.com/Arham07/google_hackathon_app)
+
 A real-time, multi-agent crisis intelligence and response orchestrator for instant civilian alerts.
 
 ## System Architecture
