@@ -8,7 +8,7 @@ A real-time, multi-agent crisis intelligence and response orchestrator for insta
 
 ---
 
-## Multi-Agent System Flow (Readable)
+## Multi-Agent System Flow
 
 1. **Data enters با خبر**
    - Sources: unstructured feeds, bulk upload, and user-reported incidents.
